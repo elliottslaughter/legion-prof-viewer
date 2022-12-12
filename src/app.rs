@@ -1,4 +1,4 @@
-use egui::{Pos2, Rect, Vec2};
+use egui::{Pos2, Rect, Vec2, Color32};
 use rand::Rng;
 use std::time::{Duration, Instant};
 
@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 pub struct AppRect {
     r: Rect,
     v: Vec2,
+    c: Color32,
 }
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
@@ -65,6 +66,7 @@ impl TemplateApp {
                     Vec2::new(sx / 8.0, sy / 8.0),
                 ),
                 v: Vec2::new((vx - 0.5) * 0.1, (vy - 0.5) * 0.1),
+                c: Color32::from_rgb(rng.gen(), rng.gen(), rng.gen()),
             });
         }
         result.last_update = Instant::now();
@@ -94,6 +96,10 @@ impl eframe::App for TemplateApp {
             r.r = r.r.translate(r.v / 60.0);
         }
 
+        let now = Instant::now();
+        let fps = 1.0 / now.duration_since(*last_update).as_secs_f64();
+        *last_update = now;
+
         // Examples of how to create different panels and windows.
         // Pick whichever suits you.
         // Tip: a good default choice is to just keep the `CentralPanel`.
@@ -114,12 +120,7 @@ impl eframe::App for TemplateApp {
         egui::SidePanel::left("side_panel").show(ctx, |ui| {
             ui.heading("Side Panel");
 
-            let now = Instant::now();
-            ui.label(format!(
-                "FPS: {:.0}",
-                1.0 / now.duration_since(*last_update).as_secs_f64()
-            ));
-            *last_update = now;
+            ui.label(format!("FPS: {:.0}", fps));
 
             ui.horizontal(|ui| {
                 ui.label("Write something: ");
@@ -177,7 +178,7 @@ pub fn viewer_ui(ui: &mut egui::Ui, rects: &Vec<AppRect>) -> egui::Response {
             );
             let r2 = r2.expand(visuals.expansion);
             ui.painter()
-                .rect(r2, 0.0, visuals.bg_fill, visuals.bg_stroke);
+                .rect(r2, 0.0, /*r.c,*/ visuals.bg_fill, visuals.bg_stroke);
         }
     }
     response

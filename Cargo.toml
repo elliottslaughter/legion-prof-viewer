@@ -18,7 +18,9 @@ eframe = { version = "0.20.0", default-features = false, features = [
 # You only need serde if you want app persistence:
 serde = { version = "1", features = ["derive"] }
 
-rand = "0.8"
+rand = { version = "0.8" }
+# transitive depedency, required for rand to support wasm
+getrandom = { version = "0.2", features = ["js"] }
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
