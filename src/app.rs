@@ -53,6 +53,9 @@ impl TemplateApp {
 
         let mut rng = rand::thread_rng();
         const N: i32 = 30000;
+        const RATIO: f32 = 16.0;
+        const RATIO_1: f32 = (RATIO - 1.0)/RATIO;
+        result.rects.clear();
         for _ in 0..N {
             let x: f32 = rng.gen();
             let y: f32 = rng.gen();
@@ -62,8 +65,8 @@ impl TemplateApp {
             let vy: f32 = rng.gen();
             result.rects.push(AppRect {
                 r: Rect::from_min_size(
-                    Pos2::new(x * 7.0 / 8.0, y * 7.0 / 8.0),
-                    Vec2::new(sx / 8.0, sy / 8.0),
+                    Pos2::new(x * RATIO_1, y * RATIO_1),
+                    Vec2::new(sx / RATIO, sy / RATIO),
                 ),
                 v: Vec2::new((vx - 0.5) * 0.1, (vy - 0.5) * 0.1),
                 c: Color32::from_rgb(rng.gen(), rng.gen(), rng.gen()),
@@ -178,7 +181,7 @@ pub fn viewer_ui(ui: &mut egui::Ui, rects: &Vec<AppRect>) -> egui::Response {
             );
             let r2 = r2.expand(visuals.expansion);
             ui.painter()
-                .rect(r2, 0.0, /*r.c,*/ visuals.bg_fill, visuals.bg_stroke);
+                .rect(r2, 0.0, r.c, /*visuals.bg_fill,*/ visuals.bg_stroke);
         }
     }
     response
