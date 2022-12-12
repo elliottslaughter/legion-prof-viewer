@@ -1,4 +1,4 @@
-use egui::{Pos2, Rect, Vec2, Color32};
+use egui::{Pos2, Rect, Vec2, Mesh, Shape, Color32};
 use rand::Rng;
 use std::time::{Duration, Instant};
 
@@ -20,7 +20,9 @@ pub struct TemplateApp {
     #[serde(skip)]
     value: f32,
 
+    #[serde(skip)]
     rects: Vec<AppRect>,
+    #[cfg(not(target_arch = "wasm32"))]
     #[serde(skip)]
     last_update: Instant,
 }
@@ -32,6 +34,7 @@ impl Default for TemplateApp {
             label: "Hello World!".to_owned(),
             value: 2.7,
             rects: Vec::new(),
+            #[cfg(not(target_arch = "wasm32"))]
             last_update: Instant::now(),
         }
     }
@@ -52,8 +55,8 @@ impl TemplateApp {
         };
 
         let mut rng = rand::thread_rng();
-        const N: i32 = 30000;
-        const RATIO: f32 = 16.0;
+        const N: i32 = 160_000;
+        const RATIO: f32 = 20.0;
         const RATIO_1: f32 = (RATIO - 1.0)/RATIO;
         result.rects.clear();
         for _ in 0..N {
@@ -72,7 +75,10 @@ impl TemplateApp {
                 c: Color32::from_rgb(rng.gen(), rng.gen(), rng.gen()),
             });
         }
-        result.last_update = Instant::now();
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            result.last_update = Instant::now();
+        }
 
         result
     }
@@ -91,6 +97,7 @@ impl eframe::App for TemplateApp {
             label,
             value,
             rects,
+            #[cfg(not(target_arch = "wasm32"))]
             last_update,
         } = self;
 
@@ -99,9 +106,13 @@ impl eframe::App for TemplateApp {
             r.r = r.r.translate(r.v / 60.0);
         }
 
-        let now = Instant::now();
-        let fps = 1.0 / now.duration_since(*last_update).as_secs_f64();
-        *last_update = now;
+        let mut _fps = 0.0;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let now = Instant::now();
+            _fps = 1.0 / now.duration_since(*last_update).as_secs_f64();
+            *last_update = now;
+        }
 
         // Examples of how to create different panels and windows.
         // Pick whichever suits you.
@@ -123,7 +134,10 @@ impl eframe::App for TemplateApp {
         egui::SidePanel::left("side_panel").show(ctx, |ui| {
             ui.heading("Side Panel");
 
-            ui.label(format!("FPS: {:.0}", fps));
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                ui.label(format!("FPS: {:.0}", _fps));
+            }
 
             ui.horizontal(|ui| {
                 ui.label("Write something: ");
