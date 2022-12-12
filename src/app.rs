@@ -1,3 +1,13 @@
+use egui::{Pos2, Rect, Vec2};
+use rand::Rng;
+use std::time::{Duration, Instant};
+
+#[derive(serde::Deserialize, serde::Serialize)]
+pub struct AppRect {
+    r: Rect,
+    v: Vec2,
+}
+
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
@@ -8,6 +18,10 @@ pub struct TemplateApp {
     // this how you opt-out of serialization of a member
     #[serde(skip)]
     value: f32,
+
+    rects: Vec<AppRect>,
+    #[serde(skip)]
+    last_update: Instant,
 }
 
 impl Default for TemplateApp {
@@ -16,6 +30,8 @@ impl Default for TemplateApp {
             // Example stuff:
             label: "Hello World!".to_owned(),
             value: 2.7,
+            rects: Vec::new(),
+            last_update: Instant::now(),
         }
     }
 }
@@ -28,11 +44,32 @@ impl TemplateApp {
 
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
-        if let Some(storage) = cc.storage {
-            return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
-        }
+        let mut result: Self = if let Some(storage) = cc.storage {
+            eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
+        } else {
+            Default::default()
+        };
 
-        Default::default()
+        let mut rng = rand::thread_rng();
+        const N: i32 = 30000;
+        for _ in 0..N {
+            let x: f32 = rng.gen();
+            let y: f32 = rng.gen();
+            let sx: f32 = rng.gen();
+            let sy: f32 = rng.gen();
+            let vx: f32 = rng.gen();
+            let vy: f32 = rng.gen();
+            result.rects.push(AppRect {
+                r: Rect::from_min_size(
+                    Pos2::new(x * 7.0 / 8.0, y * 7.0 / 8.0),
+                    Vec2::new(sx / 8.0, sy / 8.0),
+                ),
+                v: Vec2::new((vx - 0.5) * 0.1, (vy - 0.5) * 0.1),
+            });
+        }
+        result.last_update = Instant::now();
+
+        result
     }
 }
 
@@ -45,7 +82,17 @@ impl eframe::App for TemplateApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let Self { label, value } = self;
+        let Self {
+            label,
+            value,
+            rects,
+            last_update,
+        } = self;
+
+        for r in rects.iter_mut() {
+            // FIXME: need to estimate frame rate
+            r.r = r.r.translate(r.v / 60.0);
+        }
 
         // Examples of how to create different panels and windows.
         // Pick whichever suits you.
@@ -66,6 +113,13 @@ impl eframe::App for TemplateApp {
 
         egui::SidePanel::left("side_panel").show(ctx, |ui| {
             ui.heading("Side Panel");
+
+            let now = Instant::now();
+            ui.label(format!(
+                "FPS: {:.0}",
+                1.0 / now.duration_since(*last_update).as_secs_f64()
+            ));
+            *last_update = now;
 
             ui.horizontal(|ui| {
                 ui.label("Write something: ");
@@ -95,22 +149,40 @@ impl eframe::App for TemplateApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             // The central panel the region left after adding TopPanel's and SidePanel's
 
-            ui.heading("eframe template");
+            ui.heading("Test Heading");
             ui.hyperlink("https://github.com/emilk/eframe_template");
             ui.add(egui::github_link_file!(
                 "https://github.com/emilk/eframe_template/blob/master/",
                 "Source code."
             ));
+            ui.add(viewer(rects));
             egui::warn_if_debug_build(ui);
         });
+    }
+}
 
-        if false {
-            egui::Window::new("Window").show(ctx, |ui| {
-                ui.label("Windows can be moved by dragging them.");
-                ui.label("They are automatically sized based on contents.");
-                ui.label("You can turn on resizing and scrolling if you like.");
-                ui.label("You would normally chose either panels OR windows.");
-            });
+pub fn viewer_ui(ui: &mut egui::Ui, rects: &Vec<AppRect>) -> egui::Response {
+    let (rect, mut response) = ui.allocate_exact_size(ui.available_size(), egui::Sense::click());
+    if response.clicked() {
+        // This is the click handler
+    }
+    if ui.is_rect_visible(rect) {
+        // Draw the widget
+        let visuals = ui.style().interact_selectable(&response, false);
+        // let rect = rect.expand(visuals.expansion);
+        for r in rects {
+            let r2 = Rect::from_min_max(
+                rect.lerp(r.r.left_top().to_vec2()),
+                rect.lerp(r.r.right_bottom().to_vec2()),
+            );
+            let r2 = r2.expand(visuals.expansion);
+            ui.painter()
+                .rect(r2, 0.0, visuals.bg_fill, visuals.bg_stroke);
         }
     }
+    response
+}
+
+pub fn viewer(rects: &Vec<AppRect>) -> impl egui::Widget + '_ {
+    move |ui: &mut egui::Ui| viewer_ui(ui, rects)
 }
