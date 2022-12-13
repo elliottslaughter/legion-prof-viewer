@@ -1,4 +1,4 @@
-use egui::{Pos2, Rect, Vec2, Mesh, Shape, Color32};
+use egui::{Pos2, Rect, Vec2, Mesh, Shape, Color32, Stroke};
 use rand::Rng;
 use std::time::{Duration, Instant};
 
@@ -181,6 +181,7 @@ impl eframe::App for TemplateApp {
 
 pub fn viewer_ui(ui: &mut egui::Ui, rects: &Vec<AppRect>) -> egui::Response {
     let (rect, mut response) = ui.allocate_exact_size(ui.available_size(), egui::Sense::click());
+    let hit = response.hover_pos(); // where is the mouse hovering (if any)
     if response.clicked() {
         // This is the click handler
     }
@@ -193,9 +194,17 @@ pub fn viewer_ui(ui: &mut egui::Ui, rects: &Vec<AppRect>) -> egui::Response {
                 rect.lerp(r.r.left_top().to_vec2()),
                 rect.lerp(r.r.right_bottom().to_vec2()),
             );
-            let r2 = r2.expand(visuals.expansion);
+            if let Some(h) = hit {
+                if r2.contains(h) {
+                    let r2 = r2.expand(visuals.expansion);
+                    ui.painter()
+                        .rect(r2, 0.0, r.c, /*visuals.bg_fill,*/ visuals.bg_stroke);
+                    continue;
+                }
+            };
+            // let r2 = r2.expand(visuals.expansion);
             ui.painter()
-                .rect(r2, 0.0, r.c, /*visuals.bg_fill,*/ visuals.bg_stroke);
+                .rect(r2, 0.0, r.c, Stroke::NONE);
         }
     }
     response
