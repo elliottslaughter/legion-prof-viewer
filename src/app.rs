@@ -33,6 +33,11 @@ impl Slot {
             font_id.clone(),
             visuals.text_color(),
         );
+
+        // This will take effect next frame because we can't redraw this widget now
+        if response.clicked() {
+            self.expanded = !self.expanded;
+        }
     }
 
     fn rows(&self) -> u64 {
