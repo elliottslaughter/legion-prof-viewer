@@ -1,46 +1,37 @@
-use egui::{Pos2, Rect, Vec2, Mesh, Shape, Color32, Stroke};
+use egui::{Pos2, Rect, Vec2, Mesh, Shape, Color32, Stroke, TextStyle, ScrollArea, Sense, NumExt, Align2};
 use rand::Rng;
 use std::time::{Duration, Instant};
+use serde::{Deserialize, Serialize};
 
-#[derive(serde::Deserialize, serde::Serialize)]
-pub struct AppRect {
-    r: Rect,
-    v: Vec2,
-    c: Color32,
+#[derive(Deserialize, Serialize)]
+pub struct Slot {
+    expanded: bool,
+    short_name: String,
+    long_name: String,
+    max_rows: u64,
 }
 
-/// We derive Deserialize/Serialize so we can persist app state on shutdown.
-#[derive(serde::Deserialize, serde::Serialize)]
-#[serde(default)] // if we add new fields, give them default values when deserializing old state
-pub struct TemplateApp {
-    // Example stuff:
-    label: String,
+#[derive(Deserialize, Serialize)]
+#[serde(default)] // deserialize missing fields as default value
+pub struct ProfViewer {
+    slots: Vec<Slot>,
 
-    // this how you opt-out of serialization of a member
-    #[serde(skip)]
-    value: f32,
-
-    #[serde(skip)]
-    rects: Vec<AppRect>,
     #[cfg(not(target_arch = "wasm32"))]
     #[serde(skip)]
     last_update: Instant,
 }
 
-impl Default for TemplateApp {
+impl Default for ProfViewer {
     fn default() -> Self {
         Self {
-            // Example stuff:
-            label: "Hello World!".to_owned(),
-            value: 2.7,
-            rects: Vec::new(),
+            slots: Vec::new(),
             #[cfg(not(target_arch = "wasm32"))]
             last_update: Instant::now(),
         }
     }
 }
 
-impl TemplateApp {
+impl ProfViewer {
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // This is also where you can customized the look at feel of egui using
@@ -55,24 +46,15 @@ impl TemplateApp {
         };
 
         let mut rng = rand::thread_rng();
-        const N: i32 = 160_000;
-        const RATIO: f32 = 20.0;
-        const RATIO_1: f32 = (RATIO - 1.0)/RATIO;
-        result.rects.clear();
-        for _ in 0..N {
-            let x: f32 = rng.gen();
-            let y: f32 = rng.gen();
-            let sx: f32 = rng.gen();
-            let sy: f32 = rng.gen();
-            let vx: f32 = rng.gen();
-            let vy: f32 = rng.gen();
-            result.rects.push(AppRect {
-                r: Rect::from_min_size(
-                    Pos2::new(x * RATIO_1, y * RATIO_1),
-                    Vec2::new(sx / RATIO, sy / RATIO),
-                ),
-                v: Vec2::new((vx - 0.5) * 0.1, (vy - 0.5) * 0.1),
-                c: Color32::from_rgb(rng.gen(), rng.gen(), rng.gen()),
+        const N: i32 = 16;
+        result.slots.clear();
+        for i in 0..N {
+            let rows: u64 = rng.gen_range(0..64);
+            result.slots.push(Slot {
+                expanded: false,
+                short_name: format!("s{}", i),
+                long_name: format!("slot {}", i),
+                max_rows: rows,
             });
         }
         #[cfg(not(target_arch = "wasm32"))]
@@ -84,27 +66,19 @@ impl TemplateApp {
     }
 }
 
-impl eframe::App for TemplateApp {
-    /// Called by the frame work to save state before shutdown.
+impl eframe::App for ProfViewer {
+    /// Called to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
     }
 
-    /// Called each time the UI needs repainting, which may be many times per second.
-    /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
+    /// Called each time the UI needs repainting.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let Self {
-            label,
-            value,
-            rects,
+            slots,
             #[cfg(not(target_arch = "wasm32"))]
             last_update,
         } = self;
-
-        for r in rects.iter_mut() {
-            // FIXME: need to estimate frame rate
-            r.r = r.r.translate(r.v / 60.0);
-        }
 
         let mut _fps = 0.0;
         #[cfg(not(target_arch = "wasm32"))]
@@ -114,14 +88,8 @@ impl eframe::App for TemplateApp {
             *last_update = now;
         }
 
-        // Examples of how to create different panels and windows.
-        // Pick whichever suits you.
-        // Tip: a good default choice is to just keep the `CentralPanel`.
-        // For inspiration and more examples, go to https://emilk.github.io/egui
-
-        #[cfg(not(target_arch = "wasm32"))] // no File->Quit on web pages!
+        #[cfg(not(target_arch = "wasm32"))]
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            // The top panel is often a good place for a menu bar:
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     if ui.button("Quit").clicked() {
@@ -137,16 +105,6 @@ impl eframe::App for TemplateApp {
             #[cfg(not(target_arch = "wasm32"))]
             {
                 ui.label(format!("FPS: {:.0}", _fps));
-            }
-
-            ui.horizontal(|ui| {
-                ui.label("Write something: ");
-                ui.text_edit_singleline(label);
-            });
-
-            ui.add(egui::Slider::new(value, 0.0..=10.0).text("value"));
-            if ui.button("Increment").clicked() {
-                *value += 1.0;
             }
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
@@ -165,51 +123,117 @@ impl eframe::App for TemplateApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            // The central panel the region left after adding TopPanel's and SidePanel's
-
             ui.heading("Test Heading");
-            ui.hyperlink("https://github.com/emilk/eframe_template");
-            ui.add(egui::github_link_file!(
-                "https://github.com/emilk/eframe_template/blob/master/",
-                "Source code."
-            ));
-            ui.add(viewer(rects));
+            view_area(ui, slots);
             egui::warn_if_debug_build(ui);
         });
     }
 }
 
-pub fn viewer_ui(ui: &mut egui::Ui, rects: &Vec<AppRect>) -> egui::Response {
-    let (rect, mut response) = ui.allocate_exact_size(ui.available_size(), egui::Sense::click());
-    let hit = response.hover_pos(); // where is the mouse hovering (if any)
-    if response.clicked() {
-        // This is the click handler
-    }
-    if ui.is_rect_visible(rect) {
-        // Draw the widget
-        let visuals = ui.style().interact_selectable(&response, false);
-        // let rect = rect.expand(visuals.expansion);
-        for r in rects {
-            let r2 = Rect::from_min_max(
-                rect.lerp(r.r.left_top().to_vec2()),
-                rect.lerp(r.r.right_bottom().to_vec2()),
-            );
-            if let Some(h) = hit {
-                if r2.contains(h) {
-                    let r2 = r2.expand(visuals.expansion);
-                    ui.painter()
-                        .rect(r2, 0.0, r.c, /*visuals.bg_fill,*/ visuals.bg_stroke);
+pub fn view_area(ui: &mut egui::Ui, slots: &Vec<Slot>) {
+    // Use body font to figure out how tall to draw rectangles.
+    let font_id = TextStyle::Body.resolve(ui.style());
+    let row_height = ui.fonts().row_height(&font_id);
+
+    const UNEXPANDED_ROWS: u64 = 4;
+
+    ScrollArea::vertical()
+        .auto_shrink([false; 2])
+        .show_viewport(ui, |ui, viewport| {
+            // First pass to figure out how many rows we have in total
+            let mut total_rows = 0;
+            for slot in slots {
+                if slot.expanded {
+                    total_rows += slot.max_rows;
+                } else {
+                    total_rows += UNEXPANDED_ROWS;
+                }
+            }
+
+            ui.set_height(row_height * total_rows as f32);
+            ui.set_width(ui.available_width());
+
+            let first_row = (viewport.min.y / row_height).floor().at_least(0.0) as u64;
+            let last_row = (viewport.max.y / row_height).ceil() as u64 + 1;
+            let last_row = last_row.at_most(total_rows);
+
+            // let visuals = ui.style().interact_selectable(&response, false);
+            let visuals = ui.style().noninteractive(); // Hack, need to figure out how to make this responsive
+            let font_id = TextStyle::Body.resolve(ui.style());
+
+            // Second pass to draw those that intersect with the window
+            let mut row = 0;
+            let mut used_rect = Rect::NOTHING;
+            for slot in slots {
+                let start_row = row;
+                if slot.expanded {
+                    row += slot.max_rows;
+                } else {
+                    row += UNEXPANDED_ROWS;
+                }
+
+                // Prune slots out of window
+                if start_row > last_row || row < first_row {
                     continue;
                 }
-            };
-            // let r2 = r2.expand(visuals.expansion);
-            ui.painter()
-                .rect(r2, 0.0, r.c, Stroke::NONE);
-        }
-    }
-    response
+
+                let y_min = ui.min_rect().top() + start_row as f32 * row_height;
+                let y_max = ui.min_rect().top() + row as f32 * row_height;
+
+                let slot_rect = ui.min_rect().intersect(Rect::everything_below(y_min)).intersect(Rect::everything_above(y_max));
+
+                ui.painter().rect(
+                    slot_rect,
+                    0.0,
+                    Color32::GREEN/*visuals.bg_fill*/, visuals.bg_stroke,
+                    // Color32::GREEN, Color32::BLACK
+                    //visuals.bg_fill, visuals.bg_stroke
+                );
+                ui.painter().text(
+                    slot_rect.min,
+                    Align2::LEFT_TOP,
+                    slot.short_name.clone(),
+                    font_id.clone(),
+                    visuals.text_color(),
+                );
+                used_rect = used_rect.union(slot_rect);
+            }
+
+            ui.allocate_rect(used_rect, Sense::hover());
+        });
 }
 
-pub fn viewer(rects: &Vec<AppRect>) -> impl egui::Widget + '_ {
-    move |ui: &mut egui::Ui| viewer_ui(ui, rects)
-}
+// pub fn slot_ui(ui: &mut egui::Ui, slots: &Slot) -> egui::Response {
+//     let (rect, mut response) = ui.allocate_exact_size(ui.available_size(), egui::Sense::click());
+//     let hover = response.hover_pos(); // where is the mouse hovering (if any)
+//     if response.clicked() {
+//         // This is the click handler
+//     }
+//     if ui.is_rect_visible(rect) {
+//         // Draw the widget
+//         let visuals = ui.style().interact_selectable(&response, false);
+//         // let rect = rect.expand(visuals.expansion);
+//         for r in rects {
+//             let r2 = Rect::from_min_max(
+//                 rect.lerp(r.r.left_top().to_vec2()),
+//                 rect.lerp(r.r.right_bottom().to_vec2()),
+//             );
+//             if let Some(h) = hover {
+//                 if r2.contains(h) {
+//                     let r2 = r2.expand(visuals.expansion);
+//                     ui.painter()
+//                         .rect(r2, 0.0, r.c, /*visuals.bg_fill,*/ visuals.bg_stroke);
+//                     continue;
+//                 }
+//             };
+//             // let r2 = r2.expand(visuals.expansion);
+//             ui.painter()
+//                 .rect(r2, 0.0, r.c, Stroke::NONE);
+//         }
+//     }
+//     response
+// }
+
+// pub fn slot(rects: &Slot) -> impl egui::Widget + '_ {
+//     move |ui: &mut egui::Ui| slot_ui(ui, rects)
+// }
