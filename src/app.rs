@@ -20,8 +20,8 @@ pub struct Slot {
 const UNEXPANDED_ROWS: u64 = 4;
 
 impl Slot {
-    fn ui(&mut self, ui: &mut egui::Ui, rect: Rect, row_height: f32) {
-        let response = ui.allocate_rect(rect, egui::Sense::click());
+    fn ui(&mut self, ui: &mut egui::Ui, row_height: f32) {
+        let (rect, response) = ui.allocate_exact_size(ui.available_size(), egui::Sense::click());
 
         let font_id = TextStyle::Body.resolve(ui.style());
         let visuals = ui.style().interact_selectable(&response, false);
@@ -65,67 +65,26 @@ impl Window {
         let font_id = TextStyle::Body.resolve(ui.style());
         let row_height = ui.fonts().row_height(&font_id);
 
-        let mut table = TableBuilder::new(ui)
+        let table = TableBuilder::new(ui)
             .auto_shrink([false; 2])
             .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
             .column(Column::remainder())
             .min_scrolled_height(0.0)
             .max_scroll_height(f32::MAX);
 
-        table.body(|mut body| {
+        table.body(|body| {
             body.heterogeneous_rows(
                 self.slots
                     .iter()
-                    .map(|slot| slot.rows() as f32 * row_height),
+                    .map(|slot| slot.rows() as f32 * row_height)
+                    .collect::<Vec<_>>()
+                    .into_iter(),
                 |index, mut row| {
-                    let slot = &self.slots[index];
-                    row.col(|ui| {
-                        ui.label(&slot.short_name);
-                    });
+                    let slot = &mut self.slots[index];
+                    row.col(|ui| slot.ui(ui, row_height));
                 },
             )
         });
-
-        // ScrollArea::vertical()
-        //     .auto_shrink([false; 2])
-        //     .show_viewport(ui, |ui, viewport| {
-        //         // First pass to figure out how many rows we have in total
-        //         let mut total_rows = 0;
-        //         for slot in &self.slots {
-        //             total_rows += slot.rows();
-        //         }
-
-        //         ui.set_height(row_height * total_rows as f32);
-        //         ui.set_width(ui.available_width());
-
-        //         let first_row = (viewport.min.y / row_height).floor().at_least(0.0) as u64;
-        //         let last_row = (viewport.max.y / row_height).ceil() as u64 + 1;
-        //         let last_row = last_row.at_most(total_rows);
-
-        //         // Second pass to draw those that intersect with the window
-        //         let mut row = 0;
-        //         for slot in &mut self.slots {
-        //             let start_row = row;
-        //             row += slot.rows();
-
-        //             // Cull out-of-view slots
-        //             if row < first_row {
-        //                 continue;
-        //             } else if start_row > last_row {
-        //                 break;
-        //             }
-
-        //             let y_min = ui.min_rect().top() + start_row as f32 * row_height;
-        //             let y_max = ui.min_rect().top() + row as f32 * row_height;
-
-        //             let rect = ui
-        //                 .min_rect()
-        //                 .intersect(Rect::everything_below(y_min))
-        //                 .intersect(Rect::everything_above(y_max));
-
-        //             slot.ui(ui, rect, row_height);
-        //         }
-        //     });
     }
 }
 
