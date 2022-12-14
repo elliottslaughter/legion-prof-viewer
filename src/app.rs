@@ -1,6 +1,7 @@
 use egui::{
     Align2, Color32, Mesh, NumExt, Pos2, Rect, ScrollArea, Sense, Shape, Stroke, TextStyle, Vec2,
 };
+use egui_extras::{TableBuilder, Column};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
@@ -64,46 +65,61 @@ impl Window {
         let font_id = TextStyle::Body.resolve(ui.style());
         let row_height = ui.fonts().row_height(&font_id);
 
-        ScrollArea::vertical()
+        let mut table = TableBuilder::new(ui)
             .auto_shrink([false; 2])
-            .show_viewport(ui, |ui, viewport| {
-                // First pass to figure out how many rows we have in total
-                let mut total_rows = 0;
-                for slot in &self.slots {
-                    total_rows += slot.rows();
-                }
+            .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+            .column(Column::remainder())
+            .min_scrolled_height(0.0);
 
-                ui.set_height(row_height * total_rows as f32);
-                ui.set_width(ui.available_width());
 
-                let first_row = (viewport.min.y / row_height).floor().at_least(0.0) as u64;
-                let last_row = (viewport.max.y / row_height).ceil() as u64 + 1;
-                let last_row = last_row.at_most(total_rows);
-
-                // Second pass to draw those that intersect with the window
-                let mut row = 0;
-                for slot in &mut self.slots {
-                    let start_row = row;
-                    row += slot.rows();
-
-                    // Cull out-of-view slots
-                    if row < first_row {
-                        continue;
-                    } else if start_row > last_row {
-                        break;
-                    }
-
-                    let y_min = ui.min_rect().top() + start_row as f32 * row_height;
-                    let y_max = ui.min_rect().top() + row as f32 * row_height;
-
-                    let rect = ui
-                        .min_rect()
-                        .intersect(Rect::everything_below(y_min))
-                        .intersect(Rect::everything_above(y_max));
-
-                    slot.ui(ui, rect, row_height);
-                }
+        table.body(|mut body| body.heterogeneous_rows(self.slots.iter().map(|slot| slot.rows() as f32 * row_height),
+        |index, mut row| {
+            let slot = &self.slots[index];
+            row.col(|ui| {
+                ui.label(&slot.short_name);
             });
+        }));
+
+        // ScrollArea::vertical()
+        //     .auto_shrink([false; 2])
+        //     .show_viewport(ui, |ui, viewport| {
+        //         // First pass to figure out how many rows we have in total
+        //         let mut total_rows = 0;
+        //         for slot in &self.slots {
+        //             total_rows += slot.rows();
+        //         }
+
+        //         ui.set_height(row_height * total_rows as f32);
+        //         ui.set_width(ui.available_width());
+
+        //         let first_row = (viewport.min.y / row_height).floor().at_least(0.0) as u64;
+        //         let last_row = (viewport.max.y / row_height).ceil() as u64 + 1;
+        //         let last_row = last_row.at_most(total_rows);
+
+        //         // Second pass to draw those that intersect with the window
+        //         let mut row = 0;
+        //         for slot in &mut self.slots {
+        //             let start_row = row;
+        //             row += slot.rows();
+
+        //             // Cull out-of-view slots
+        //             if row < first_row {
+        //                 continue;
+        //             } else if start_row > last_row {
+        //                 break;
+        //             }
+
+        //             let y_min = ui.min_rect().top() + start_row as f32 * row_height;
+        //             let y_max = ui.min_rect().top() + row as f32 * row_height;
+
+        //             let rect = ui
+        //                 .min_rect()
+        //                 .intersect(Rect::everything_below(y_min))
+        //                 .intersect(Rect::everything_above(y_max));
+
+        //             slot.ui(ui, rect, row_height);
+        //         }
+        //     });
     }
 }
 
