@@ -61,16 +61,27 @@ impl Slot {
             .rect(rect, 0.0, visuals.bg_fill, visuals.bg_stroke);
         if self.expanded {
             let rows = self.rows();
+            let mut i = 0;
             for item in &self.items {
                 let min = rect.lerp(Vec2::new(
                     item.start,
                     (item.row as f32 + 0.05) / rows as f32,
                 ));
                 let max = rect.lerp(Vec2::new(item.stop, (item.row as f32 + 0.95) / rows as f32));
+                let color = match i % 6 {
+                    0 => Color32::BLUE,
+                    1 => Color32::RED,
+                    2 => Color32::GREEN,
+                    3 => Color32::YELLOW,
+                    4 => Color32::BROWN,
+                    5 => Color32::LIGHT_GREEN,
+                    _ => Color32::WHITE,
+                };
+                i += 1;
                 ui.painter().rect(
                     Rect::from_min_max(min, max),
                     0.0,
-                    Color32::BLUE,
+                    color,
                     Stroke::NONE,
                 );
             }
