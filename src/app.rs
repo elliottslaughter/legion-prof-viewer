@@ -90,7 +90,7 @@ impl Slot {
 
     fn rows(&self) -> u64 {
         if self.expanded {
-            self.max_rows
+            self.max_rows.at_least(Self::UNEXPANDED_ROWS)
         } else {
             Self::UNEXPANDED_ROWS
         }
