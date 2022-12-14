@@ -9,26 +9,36 @@ use std::time::{Duration, Instant};
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default, Deserialize, Serialize)]
 pub struct Timestamp(pub u64 /* ns */);
 
-#[derive(Default, Deserialize, Serialize)]
+pub struct Item {
+    row: u64,
+    start: f32,
+    stop: f32,
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct Slot {
     expanded: bool,
     short_name: String,
     long_name: String,
     max_rows: u64,
+
+    #[serde(skip)]
+    items: Vec<Item>,
 }
 
-const UNEXPANDED_ROWS: u64 = 4;
-
 impl Slot {
-    fn ui(&mut self, ui: &mut egui::Ui, row_height: f32) {
+    const UNEXPANDED_ROWS: u64 = 4;
+
+    fn label(&mut self, ui: &mut egui::Ui) {
         let (rect, response) = ui.allocate_exact_size(ui.available_size(), egui::Sense::click());
 
-        let font_id = TextStyle::Body.resolve(ui.style());
-        let visuals = ui.style().interact_selectable(&response, false);
+        let style = ui.style();
+        let font_id = TextStyle::Body.resolve(style);
+        let visuals = style.interact_selectable(&response, false);
         ui.painter()
             .rect(rect, 0.0, visuals.bg_fill, visuals.bg_stroke);
         ui.painter().text(
-            rect.min + Vec2::new(4.0, 4.0),
+            rect.min + style.spacing.item_spacing,
             Align2::LEFT_TOP,
             &self.short_name,
             font_id.clone(),
@@ -36,8 +46,34 @@ impl Slot {
         );
 
         // This will take effect next frame because we can't redraw this widget now
+        // FIXME: this creates inconsistency because this updates before the viewer widget
         if response.clicked() {
             self.expanded = !self.expanded;
+        }
+    }
+
+    fn viewer(&mut self, ui: &mut egui::Ui, row_height: f32) {
+        let (rect, response) = ui.allocate_exact_size(ui.available_size(), egui::Sense::hover());
+
+        let style = ui.style();
+        let visuals = style.interact_selectable(&response, false);
+        ui.painter()
+            .rect(rect, 0.0, visuals.bg_fill, visuals.bg_stroke);
+        if self.expanded {
+            let rows = self.rows();
+            for item in &self.items {
+                let min = rect.lerp(Vec2::new(
+                    item.start,
+                    (item.row as f32 + 0.05) / rows as f32,
+                ));
+                let max = rect.lerp(Vec2::new(item.stop, (item.row as f32 + 0.95) / rows as f32));
+                ui.painter().rect(
+                    Rect::from_min_max(min, max),
+                    0.0,
+                    Color32::BLUE,
+                    Stroke::NONE,
+                );
+            }
         }
     }
 
@@ -45,7 +81,7 @@ impl Slot {
         if self.expanded {
             self.max_rows
         } else {
-            UNEXPANDED_ROWS
+            Self::UNEXPANDED_ROWS
         }
     }
 }
@@ -67,7 +103,8 @@ impl Window {
 
         let table = TableBuilder::new(ui)
             .auto_shrink([false; 2])
-            .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+            .cell_layout(egui::Layout::left_to_right(egui::Align::Min))
+            .column(Column::exact(100.0))
             .column(Column::remainder())
             .min_scrolled_height(0.0)
             .max_scroll_height(f32::MAX);
@@ -81,7 +118,8 @@ impl Window {
                     .into_iter(),
                 |index, mut row| {
                     let slot = &mut self.slots[index];
-                    row.col(|ui| slot.ui(ui, row_height));
+                    row.col(|ui| slot.label(ui));
+                    row.col(|ui| slot.viewer(ui, row_height));
                 },
             )
         });
@@ -127,11 +165,21 @@ impl ProfViewer {
         result.window.slots.clear();
         for i in 0..N {
             let rows: u64 = rng.gen_range(0..64);
+            let mut items = Vec::new();
+            for row in 0..rows {
+                const M: u64 = 1000;
+                for i in 0..M {
+                    let start = (i as f32 + 0.05) / (M as f32);
+                    let stop = (i as f32 + 0.95) / (M as f32);
+                    items.push(Item { row, start, stop });
+                }
+            }
             result.window.slots.push(Slot {
                 expanded: false,
                 short_name: format!("s{}", i),
                 long_name: format!("slot {}", i),
                 max_rows: rows,
+                items: items,
             });
         }
         #[cfg(not(target_arch = "wasm32"))]
