@@ -1,7 +1,7 @@
 use egui::{
     Align2, Color32, Mesh, NumExt, Pos2, Rect, ScrollArea, Sense, Shape, Stroke, TextStyle, Vec2,
 };
-use egui_extras::{TableBuilder, Column};
+use egui_extras::{Column, TableBuilder};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
@@ -72,14 +72,19 @@ impl Window {
             .min_scrolled_height(0.0)
             .max_scroll_height(f32::MAX);
 
-
-        table.body(|mut body| body.heterogeneous_rows(self.slots.iter().map(|slot| slot.rows() as f32 * row_height),
-        |index, mut row| {
-            let slot = &self.slots[index];
-            row.col(|ui| {
-                ui.label(&slot.short_name);
-            });
-        }));
+        table.body(|mut body| {
+            body.heterogeneous_rows(
+                self.slots
+                    .iter()
+                    .map(|slot| slot.rows() as f32 * row_height),
+                |index, mut row| {
+                    let slot = &self.slots[index];
+                    row.col(|ui| {
+                        ui.label(&slot.short_name);
+                    });
+                },
+            )
+        });
 
         // ScrollArea::vertical()
         //     .auto_shrink([false; 2])
