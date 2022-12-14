@@ -69,7 +69,8 @@ impl Window {
             .auto_shrink([false; 2])
             .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
             .column(Column::remainder())
-            .min_scrolled_height(0.0);
+            .min_scrolled_height(0.0)
+            .max_scroll_height(f32::MAX);
 
 
         table.body(|mut body| body.heterogeneous_rows(self.slots.iter().map(|slot| slot.rows() as f32 * row_height),
