@@ -1,5 +1,4 @@
-use egui::{Align2, Color32, NumExt, Rect, Stroke, TextStyle, Vec2};
-use egui_extras::{Column, TableBuilder};
+use egui::{Align2, Color32, NumExt, Pos2, Rect, ScrollArea, Stroke, TextStyle, Vec2};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
@@ -7,6 +6,27 @@ use std::time::Instant;
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default, Deserialize, Serialize)]
 pub struct Timestamp(pub u64 /* ns */);
 
+/// Overview:
+///   Window -> Panel
+///   Panel -> Summary, { Panel | Slot } *
+///   Summary
+///   Slot -> Item *
+///
+/// Window:
+///   * Owns the ScrollArea (there is only **ONE** ScrollArea)
+///   * Handles pan/zoom (there is only **ONE** pan/zoom setting)
+///
+/// Panel:
+///   * Table widget for (nested) cells
+///   * Each row contains: label, content
+///
+/// Summary
+///   * Utilization widget
+///
+/// Slot:
+///   * Viewer widget for items
+
+// DO NOT derive (de)serialize, we will never serialize this
 pub struct Item {
     row: u64,
     start: f32,
@@ -14,6 +34,9 @@ pub struct Item {
 }
 
 #[derive(Deserialize, Serialize)]
+pub struct Summary {}
+
+#[derive(Default, Deserialize, Serialize)]
 pub struct Slot {
     expanded: bool,
     short_name: String,
@@ -24,34 +47,121 @@ pub struct Slot {
     items: Vec<Item>,
 }
 
-impl Slot {
-    const UNEXPANDED_ROWS: u64 = 4;
+#[derive(Default, Deserialize, Serialize)]
+pub struct Panel<S: Entry> {
+    expanded: bool,
+    short_name: String,
+    long_name: String,
 
-    fn label(&mut self, ui: &mut egui::Ui) {
-        let (rect, response) = ui.allocate_exact_size(ui.available_size(), egui::Sense::click());
+    summary: Option<Summary>,
+    slots: Vec<S>,
+}
+
+pub trait Entry {
+    fn label_text(&self) -> &str;
+
+    fn label(&mut self, ui: &mut egui::Ui, rect: Rect) {
+        let response = ui.allocate_rect(
+            rect,
+            if self.is_expandable() {
+                egui::Sense::click()
+            } else {
+                egui::Sense::hover()
+            },
+        );
 
         let style = ui.style();
         let font_id = TextStyle::Body.resolve(style);
-        let visuals = style.interact_selectable(&response, false);
+        let visuals = if self.is_expandable() {
+            style.interact_selectable(&response, false)
+        } else {
+            *style.noninteractive()
+        };
+
         ui.painter()
             .rect(rect, 0.0, visuals.bg_fill, visuals.bg_stroke);
         ui.painter().text(
             rect.min + style.spacing.item_spacing,
             Align2::LEFT_TOP,
-            &self.short_name,
+            &self.label_text(),
             font_id,
             visuals.text_color(),
         );
 
         // This will take effect next frame because we can't redraw this widget now
-        // FIXME: this creates inconsistency because this updates before the viewer widget
+        // FIXME: this creates inconsistency because this updates before the content
         if response.clicked() {
-            self.expanded = !self.expanded;
+            self.toggle_expanded();
         }
     }
 
-    fn viewer(&mut self, ui: &mut egui::Ui, _row_height: f32) {
-        let (rect, response) = ui.allocate_exact_size(ui.available_size(), egui::Sense::hover());
+    fn content(&mut self, ui: &mut egui::Ui, rect: Rect, screenspace_offset: Vec2, row_height: f32);
+
+    fn height(&self, row_height: f32) -> f32;
+
+    fn is_expandable(&self) -> bool;
+
+    fn toggle_expanded(&mut self);
+}
+
+impl Entry for Summary {
+    fn label_text(&self) -> &str {
+        "Summary"
+    }
+
+    fn content(
+        &mut self,
+        ui: &mut egui::Ui,
+        rect: Rect,
+        screenspace_offset: Vec2,
+        _row_height: f32,
+    ) {
+        let response = ui.allocate_rect(rect, egui::Sense::hover());
+
+        let style = ui.style();
+        let visuals = style.interact_selectable(&response, false);
+        ui.painter()
+            .rect(rect, 0.0, visuals.bg_fill, visuals.bg_stroke);
+    }
+
+    fn height(&self, row_height: f32) -> f32 {
+        const ROWS: u64 = 4;
+        ROWS as f32 * row_height
+    }
+
+    fn is_expandable(&self) -> bool {
+        false
+    }
+
+    fn toggle_expanded(&mut self) {
+        unreachable!();
+    }
+}
+
+impl Slot {
+    fn rows(&self) -> u64 {
+        const UNEXPANDED_ROWS: u64 = 2;
+        if self.expanded {
+            self.max_rows.at_least(UNEXPANDED_ROWS)
+        } else {
+            UNEXPANDED_ROWS
+        }
+    }
+}
+
+impl Entry for Slot {
+    fn label_text(&self) -> &str {
+        &self.short_name
+    }
+
+    fn content(
+        &mut self,
+        ui: &mut egui::Ui,
+        rect: Rect,
+        screenspace_offset: Vec2,
+        _row_height: f32,
+    ) {
+        let response = ui.allocate_rect(rect, egui::Sense::hover());
 
         let style = ui.style();
         let visuals = style.interact_selectable(&response, false);
@@ -80,18 +190,120 @@ impl Slot {
         }
     }
 
-    fn rows(&self) -> u64 {
-        if self.expanded {
-            self.max_rows.at_least(Self::UNEXPANDED_ROWS)
-        } else {
-            Self::UNEXPANDED_ROWS
+    fn height(&self, row_height: f32) -> f32 {
+        self.rows() as f32 * row_height
+    }
+
+    fn is_expandable(&self) -> bool {
+        true
+    }
+
+    fn toggle_expanded(&mut self) {
+        self.expanded = !self.expanded;
+    }
+}
+
+impl<S: Entry> Panel<S> {
+    fn render<T: Entry>(
+        ui: &mut egui::Ui,
+        rect: Rect,
+        screenspace_offset: Vec2,
+        slot: &mut T,
+        y: &mut f32,
+        row_height: f32,
+    ) -> bool {
+        const LABEL_WIDTH: f32 = 100.0;
+        const COL_PADDING: f32 = 4.0;
+        const ROW_PADDING: f32 = 4.0;
+
+        // Compute the size of this slot
+        let min_y = *y;
+        let max_y = min_y + slot.height(row_height);
+        *y = max_y + ROW_PADDING;
+
+        // Cull if out of bounds
+        let viewport = rect.translate(screenspace_offset);
+        if max_y < rect.min.y {
+            return false;
+        } else if min_y > rect.max.y {
+            return true;
         }
+
+        // Draw label and content
+        let label_min = rect.min.x;
+        let label_max = (rect.min.x + LABEL_WIDTH).at_most(rect.max.x);
+        let content_min = (label_max + COL_PADDING).at_most(rect.max.x);
+        let content_max = rect.max.x;
+
+        let label_subrect =
+            Rect::from_min_max(Pos2::new(label_min, min_y), Pos2::new(label_max, max_y));
+        let content_subrect =
+            Rect::from_min_max(Pos2::new(content_min, min_y), Pos2::new(content_max, max_y));
+        slot.label(ui, label_subrect);
+        slot.content(ui, content_subrect, screenspace_offset, row_height);
+
+        false
+    }
+}
+
+impl<S: Entry> Entry for Panel<S> {
+    fn label_text(&self) -> &str {
+        &self.short_name
+    }
+
+    fn content(
+        &mut self,
+        ui: &mut egui::Ui,
+        rect: Rect,
+        screenspace_offset: Vec2,
+        row_height: f32,
+    ) {
+        let mut y = rect.min.y;
+        if let Some(summary) = &mut self.summary {
+            Self::render(ui, rect, screenspace_offset, summary, &mut y, row_height);
+        }
+
+        for slot in &mut self.slots {
+            if Self::render(ui, rect, screenspace_offset, slot, &mut y, row_height) {
+                break;
+            }
+        }
+    }
+
+    fn height(&self, row_height: f32) -> f32 {
+        const ROW_PADDING: f32 = 4.0;
+
+        let mut total = 0.0;
+        let mut rows = 0;
+        if let Some(summary) = &self.summary {
+            total += summary.height(row_height);
+            rows += 1;
+        }
+
+        if self.expanded {
+            for slot in &self.slots {
+                total += slot.height(row_height);
+            }
+            rows += self.slots.len();
+        }
+
+        total += (rows - 1).at_least(0) as f32 * ROW_PADDING;
+
+        total
+    }
+
+    fn is_expandable(&self) -> bool {
+        true
+    }
+
+    fn toggle_expanded(&mut self) {
+        self.expanded = !self.expanded;
     }
 }
 
 #[derive(Default, Deserialize, Serialize)]
 pub struct Window {
-    slots: Vec<Slot>,
+    panel: Panel<Panel<Panel<Slot>>>, // nodes -> kind -> proc/chan/mem
     min_time: Timestamp,
     max_time: Timestamp,
     window_start: Timestamp,
@@ -104,28 +316,25 @@ impl Window {
         let font_id = TextStyle::Body.resolve(ui.style());
         let row_height = ui.fonts().row_height(&font_id);
 
-        let table = TableBuilder::new(ui)
+        ScrollArea::vertical()
             .auto_shrink([false; 2])
-            .cell_layout(egui::Layout::left_to_right(egui::Align::Min))
-            .column(Column::exact(100.0))
-            .column(Column::remainder())
-            .min_scrolled_height(0.0)
-            .max_scroll_height(f32::MAX);
+            .show_viewport(ui, |ui, viewport| {
+                let height = self.panel.height(row_height);
+                ui.set_height(height);
+                ui.set_width(ui.available_width());
 
-        table.body(|body| {
-            body.heterogeneous_rows(
-                self.slots
-                    .iter()
-                    .map(|slot| slot.rows() as f32 * row_height)
-                    .collect::<Vec<_>>()
-                    .into_iter(),
-                |index, mut row| {
-                    let slot = &mut self.slots[index];
-                    row.col(|ui| slot.label(ui));
-                    row.col(|ui| slot.viewer(ui, row_height));
-                },
-            )
-        });
+                let screenspace_offset = viewport.min - ui.min_rect().min;
+
+                let rect = Rect::from_min_size(ui.min_rect().min, viewport.size());
+
+                println!("height {}", height);
+                println!("viewport {:?}", viewport);
+                println!("min_rect {:?}", ui.min_rect());
+                println!("rect {:?}", rect);
+
+                // Root panel has no label
+                self.panel.content(ui, rect, screenspace_offset, row_height);
+            });
     }
 }
 
@@ -164,27 +373,56 @@ impl ProfViewer {
         };
 
         let mut rng = rand::thread_rng();
-        const N: i32 = 16;
-        result.window.slots.clear();
-        for i in 0..N {
-            let rows: u64 = rng.gen_range(0..64);
-            let mut items = Vec::new();
-            for row in 0..rows {
-                const M: u64 = 1000;
-                for i in 0..M {
-                    let start = (i as f32 + 0.05) / (M as f32);
-                    let stop = (i as f32 + 0.95) / (M as f32);
-                    items.push(Item { row, start, stop });
+        const NODES: i32 = 1;
+        const PROCS: i32 = 1;
+        let mut node_slots = Vec::new();
+        for node in 0..NODES {
+            let mut kind_slots = Vec::new();
+            for kind in vec!["cpu", "gpu", "util", "chan"] {
+                let mut proc_slots = Vec::new();
+                for proc in 0..PROCS {
+                    let rows: u64 = rng.gen_range(0..64);
+                    let mut items = Vec::new();
+                    for row in 0..rows {
+                        const N: u64 = 1000;
+                        for i in 0..N {
+                            let start = (i as f32 + 0.05) / (N as f32);
+                            let stop = (i as f32 + 0.95) / (N as f32);
+                            items.push(Item { row, start, stop });
+                        }
+                    }
+                    proc_slots.push(Slot {
+                        expanded: false,
+                        short_name: format!("{}{}", kind.chars().next().unwrap(), proc),
+                        long_name: format!("{}{}", kind, proc),
+                        max_rows: rows,
+                        items,
+                    });
                 }
+                kind_slots.push(Panel {
+                    expanded: false,
+                    short_name: kind.to_owned(),
+                    long_name: kind.to_owned(),
+                    summary: Some(Summary {}),
+                    slots: proc_slots,
+                });
             }
-            result.window.slots.push(Slot {
+            node_slots.push(Panel {
                 expanded: false,
-                short_name: format!("s{}", i),
-                long_name: format!("slot {}", i),
-                max_rows: rows,
-                items,
+                short_name: format!("n{}", node),
+                long_name: format!("node{}", node),
+                summary: None,
+                slots: kind_slots,
             });
         }
+        result.window.panel = Panel {
+            expanded: false,
+            short_name: "root".to_owned(),
+            long_name: "root".to_owned(),
+            summary: None,
+            slots: node_slots,
+        };
+
         #[cfg(not(target_arch = "wasm32"))]
         {
             result.last_update = Instant::now();
