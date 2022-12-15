@@ -1,6 +1,4 @@
-use egui::{
-    Align2, Color32, NumExt, Rect, Stroke, TextStyle, Vec2,
-};
+use egui::{Align2, Color32, NumExt, Rect, Stroke, TextStyle, Vec2};
 use egui_extras::{Column, TableBuilder};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
