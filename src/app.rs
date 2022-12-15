@@ -1,10 +1,10 @@
 use egui::{
-    Align2, Color32, Mesh, NumExt, Pos2, Rect, ScrollArea, Sense, Shape, Stroke, TextStyle, Vec2,
+    Align2, Color32, NumExt, Rect, Stroke, TextStyle, Vec2,
 };
 use egui_extras::{Column, TableBuilder};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default, Deserialize, Serialize)]
 pub struct Timestamp(pub u64 /* ns */);
@@ -41,7 +41,7 @@ impl Slot {
             rect.min + style.spacing.item_spacing,
             Align2::LEFT_TOP,
             &self.short_name,
-            font_id.clone(),
+            font_id,
             visuals.text_color(),
         );
 
@@ -52,7 +52,7 @@ impl Slot {
         }
     }
 
-    fn viewer(&mut self, ui: &mut egui::Ui, row_height: f32) {
+    fn viewer(&mut self, ui: &mut egui::Ui, _row_height: f32) {
         let (rect, response) = ui.allocate_exact_size(ui.available_size(), egui::Sense::hover());
 
         let style = ui.style();
@@ -61,8 +61,7 @@ impl Slot {
             .rect(rect, 0.0, visuals.bg_fill, visuals.bg_stroke);
         if self.expanded {
             let rows = self.rows();
-            let mut i = 0;
-            for item in &self.items {
+            for (i, item) in self.items.iter().enumerate() {
                 let min = rect.lerp(Vec2::new(
                     item.start,
                     (item.row as f32 + 0.05) / rows as f32,
@@ -77,7 +76,6 @@ impl Slot {
                     5 => Color32::LIGHT_GREEN,
                     _ => Color32::WHITE,
                 };
-                i += 1;
                 ui.painter()
                     .rect(Rect::from_min_max(min, max), 0.0, color, Stroke::NONE);
             }
@@ -186,7 +184,7 @@ impl ProfViewer {
                 short_name: format!("s{}", i),
                 long_name: format!("slot {}", i),
                 max_rows: rows,
-                items: items,
+                items,
             });
         }
         #[cfg(not(target_arch = "wasm32"))]
