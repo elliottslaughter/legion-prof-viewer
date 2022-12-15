@@ -78,12 +78,8 @@ impl Slot {
                     _ => Color32::WHITE,
                 };
                 i += 1;
-                ui.painter().rect(
-                    Rect::from_min_max(min, max),
-                    0.0,
-                    color,
-                    Stroke::NONE,
-                );
+                ui.painter()
+                    .rect(Rect::from_min_max(min, max), 0.0, color, Stroke::NONE);
             }
         }
     }
