@@ -304,6 +304,7 @@ impl<S: Entry> Entry for Panel<S> {
 
 #[derive(Default, Deserialize, Serialize)]
 pub struct Window {
+    #[serde(skip)]
     panel: Panel<Panel<Panel<Slot>>>, // nodes -> kind -> proc/chan/mem
     min_time: Timestamp,
     max_time: Timestamp,
@@ -367,7 +368,7 @@ impl ProfViewer {
         };
 
         let mut rng = rand::thread_rng();
-        const NODES: i32 = 16;
+        const NODES: i32 = 1024;
         const PROCS: i32 = 8;
         let mut node_slots = Vec::new();
         for node in 0..NODES {
