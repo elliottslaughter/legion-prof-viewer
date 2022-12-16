@@ -109,13 +109,7 @@ impl Entry for Summary {
         "Summary"
     }
 
-    fn content(
-        &mut self,
-        ui: &mut egui::Ui,
-        rect: Rect,
-        viewport: Rect,
-        _row_height: f32,
-    ) {
+    fn content(&mut self, ui: &mut egui::Ui, rect: Rect, _viewport: Rect, _row_height: f32) {
         let response = ui.allocate_rect(rect, egui::Sense::hover());
 
         let style = ui.style();
@@ -154,13 +148,7 @@ impl Entry for Slot {
         &self.short_name
     }
 
-    fn content(
-        &mut self,
-        ui: &mut egui::Ui,
-        rect: Rect,
-        viewport: Rect,
-        _row_height: f32,
-    ) {
+    fn content(&mut self, ui: &mut egui::Ui, rect: Rect, _viewport: Rect, _row_height: f32) {
         let response = ui.allocate_rect(rect, egui::Sense::hover());
 
         let style = ui.style();
@@ -252,13 +240,7 @@ impl<S: Entry> Entry for Panel<S> {
         &self.short_name
     }
 
-    fn content(
-        &mut self,
-        ui: &mut egui::Ui,
-        rect: Rect,
-        viewport: Rect,
-        row_height: f32,
-    ) {
+    fn content(&mut self, ui: &mut egui::Ui, rect: Rect, viewport: Rect, row_height: f32) {
         let mut y = rect.min.y;
         if let Some(summary) = &mut self.summary {
             Self::render(ui, rect, viewport, summary, &mut y, row_height);
