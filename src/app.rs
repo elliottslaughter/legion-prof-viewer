@@ -217,11 +217,13 @@ impl<S: Entry> Panel<S> {
         const ROW_PADDING: f32 = 4.0;
 
         // Compute the size of this slot
+        // This is in screen (i.e., rect) space
         let min_y = *y;
         let max_y = min_y + slot.height(row_height);
         *y = max_y + ROW_PADDING;
 
         // Cull if out of bounds
+        // Note: need to shift by rect.min to get to viewport space
         if max_y - rect.min.y < viewport.min.y {
             return false;
         } else if min_y - rect.min.y > viewport.max.y {
@@ -238,7 +240,12 @@ impl<S: Entry> Panel<S> {
             Rect::from_min_max(Pos2::new(label_min, min_y), Pos2::new(label_max, max_y));
         let content_subrect =
             Rect::from_min_max(Pos2::new(content_min, min_y), Pos2::new(content_max, max_y));
-        let content_viewport = Rect::from_min_size(Pos2::ZERO, content_subrect.size());
+
+        // Shift viewport up by the amount consumed
+        // Invariant: (0, 0) in viewport is rect.min
+        //   (i.e., subtracting rect.min gets us from screen space to viewport space)
+        // Note: viewport.min is NOT necessarily (0, 0)
+        let content_viewport = viewport.translate(Vec2::new(0.0, rect.min.y - min_y));
 
         slot.content(ui, content_subrect, content_viewport, row_height);
         slot.label(ui, label_subrect);
