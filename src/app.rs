@@ -460,7 +460,7 @@ impl eframe::App for ProfViewer {
         });
 
         egui::SidePanel::left("side_panel").show(ctx, |ui| {
-            ui.heading("Side Panel");
+            ui.heading("Legion Prof");
 
             #[cfg(not(target_arch = "wasm32"))]
             {
@@ -483,7 +483,6 @@ impl eframe::App for ProfViewer {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Test Heading");
             window.ui(ui);
             egui::warn_if_debug_build(ui);
         });
