@@ -474,12 +474,16 @@ impl eframe::App for ProfViewer {
             ui.label(" 3. Click a processor or channel to collapse it.");
             ui.label(" 4. Hover over a task to see a tooltip.");
 
+            ui.separator();
+
             ui.label("Things that do NOT work yet:");
 
             ui.label(" 1. Pan/zoom.");
             ui.label(" 2. Expand all of a kind.");
             ui.label(" 3. Search.");
             ui.label(" 4. Relationships (e.g., dependencies).");
+
+            ui.separator();
 
             ui.label("The app should stay responsive throughout.");
 
