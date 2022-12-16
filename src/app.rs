@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default, Deserialize, Serialize)]
-pub struct Timestamp(pub u64 /* ns */);
+struct Timestamp(u64 /* ns */);
 
 /// Overview:
 ///   Window -> Panel
@@ -27,19 +27,25 @@ pub struct Timestamp(pub u64 /* ns */);
 ///   * Viewer widget for items
 
 // DO NOT derive (de)serialize, we will never serialize this
-pub struct Item {
+struct Item {
     _row: u64,
     start: f32,
     stop: f32,
 }
 
-#[derive(Default)]
-pub struct Summary {
-    utilization: Vec<f32>,
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Default, Deserialize, Serialize)]
+struct UtilPoint {
+    time: f32,
+    util: f32,
 }
 
 #[derive(Default)]
-pub struct Slot {
+struct Summary {
+    utilization: Vec<UtilPoint>,
+}
+
+#[derive(Default)]
+struct Slot {
     expanded: bool,
     short_name: String,
     long_name: String,
@@ -48,7 +54,7 @@ pub struct Slot {
 }
 
 #[derive(Default)]
-pub struct Panel<S: Entry> {
+struct Panel<S: Entry> {
     expanded: bool,
     short_name: String,
     long_name: String,
@@ -57,7 +63,35 @@ pub struct Panel<S: Entry> {
     slots: Vec<S>,
 }
 
-pub trait Entry {
+#[derive(Default, Deserialize, Serialize)]
+struct Settings {
+    row_height: f32,
+    window_start: Timestamp,
+    window_stop: Timestamp,
+    #[serde(skip)]
+    rng: rand::rngs::ThreadRng,
+}
+
+#[derive(Default, Deserialize, Serialize)]
+struct Window {
+    #[serde(skip)]
+    panel: Panel<Panel<Panel<Slot>>>, // nodes -> kind -> proc/chan/mem
+    min_time: Timestamp,
+    max_time: Timestamp,
+    settings: Settings,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(default)] // deserialize missing fields as default value
+pub struct ProfViewer {
+    window: Window,
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[serde(skip)]
+    last_update: Instant,
+}
+
+trait Entry {
     fn label_text(&self) -> &str;
     fn hover_text(&self) -> &str;
 
@@ -97,13 +131,52 @@ pub trait Entry {
         }
     }
 
-    fn content(&mut self, ui: &mut egui::Ui, rect: Rect, viewport: Rect, row_height: f32);
+    fn content(&mut self, ui: &mut egui::Ui, rect: Rect, viewport: Rect, settings: &mut Settings);
 
     fn height(&self, row_height: f32) -> f32;
 
     fn is_expandable(&self) -> bool;
 
     fn toggle_expanded(&mut self);
+}
+
+impl Summary {
+    fn generate_point(
+        &mut self,
+        first: UtilPoint,
+        last: UtilPoint,
+        level: i32,
+        max_level: i32,
+        settings: &mut Settings,
+    ) {
+        let time = (first.time + last.time) * 0.5;
+        let util = (first.util + last.util) * 0.5;
+        let diff = (settings.rng.gen::<f32>() - 0.5) / 1.2_f32.powi(max_level - level);
+        let util = (util + diff).at_least(0.0).at_most(1.0);
+        let point = UtilPoint { time, util };
+        if level > 0 {
+            self.generate_point(first, point, level - 1, max_level, settings);
+        }
+        self.utilization.push(point);
+        if level > 0 {
+            self.generate_point(point, last, level - 1, max_level, settings);
+        }
+    }
+
+    fn generate(&mut self, settings: &mut Settings) {
+        const LEVELS: i32 = 6;
+        let first = UtilPoint {
+            time: 0.0,
+            util: settings.rng.gen(),
+        };
+        let last = UtilPoint {
+            time: 1.0,
+            util: settings.rng.gen(),
+        };
+        self.utilization.push(first);
+        self.generate_point(first, last, LEVELS, LEVELS, settings);
+        self.utilization.push(last);
+    }
 }
 
 impl Entry for Summary {
@@ -114,13 +187,28 @@ impl Entry for Summary {
         "Utilization Plot of Processor/Channel/Memory Usage"
     }
 
-    fn content(&mut self, ui: &mut egui::Ui, rect: Rect, _viewport: Rect, _row_height: f32) {
+    fn content(&mut self, ui: &mut egui::Ui, rect: Rect, _viewport: Rect, settings: &mut Settings) {
         let response = ui.allocate_rect(rect, egui::Sense::hover());
+
+        if self.utilization.is_empty() {
+            self.generate(settings);
+        }
 
         let style = ui.style();
         let visuals = style.interact_selectable(&response, false);
         ui.painter()
             .rect(rect, 0.0, visuals.bg_fill, visuals.bg_stroke);
+
+        let mut last_point = None;
+        for util in &self.utilization {
+            // Convert utilization to screen space
+            let point = rect.lerp(Vec2::new(util.time, 1.0 - util.util));
+            if let Some(last) = last_point {
+                ui.painter().line_segment([last, point], visuals.bg_stroke);
+            }
+
+            last_point = Some(point);
+        }
     }
 
     fn height(&self, row_height: f32) -> f32 {
@@ -175,7 +263,7 @@ impl Entry for Slot {
         &self.long_name
     }
 
-    fn content(&mut self, ui: &mut egui::Ui, rect: Rect, viewport: Rect, _row_height: f32) {
+    fn content(&mut self, ui: &mut egui::Ui, rect: Rect, viewport: Rect, _settings: &mut Settings) {
         let response = ui.allocate_rect(rect, egui::Sense::hover());
         let mut hover_pos = response.hover_pos(); // where is the mouse hovering?
 
@@ -269,7 +357,7 @@ impl<S: Entry> Panel<S> {
         viewport: Rect,
         slot: &mut T,
         y: &mut f32,
-        row_height: f32,
+        settings: &mut Settings,
     ) -> bool {
         const LABEL_WIDTH: f32 = 80.0;
         const COL_PADDING: f32 = 4.0;
@@ -278,7 +366,7 @@ impl<S: Entry> Panel<S> {
         // Compute the size of this slot
         // This is in screen (i.e., rect) space
         let min_y = *y;
-        let max_y = min_y + slot.height(row_height);
+        let max_y = min_y + slot.height(settings.row_height);
         *y = max_y + ROW_PADDING;
 
         // Cull if out of bounds
@@ -306,7 +394,7 @@ impl<S: Entry> Panel<S> {
         // Note: viewport.min is NOT necessarily (0, 0)
         let content_viewport = viewport.translate(Vec2::new(0.0, rect.min.y - min_y));
 
-        slot.content(ui, content_subrect, content_viewport, row_height);
+        slot.content(ui, content_subrect, content_viewport, settings);
         slot.label(ui, label_subrect);
 
         false
@@ -321,15 +409,15 @@ impl<S: Entry> Entry for Panel<S> {
         &self.long_name
     }
 
-    fn content(&mut self, ui: &mut egui::Ui, rect: Rect, viewport: Rect, row_height: f32) {
+    fn content(&mut self, ui: &mut egui::Ui, rect: Rect, viewport: Rect, settings: &mut Settings) {
         let mut y = rect.min.y;
         if let Some(summary) = &mut self.summary {
-            Self::render(ui, rect, viewport, summary, &mut y, row_height);
+            Self::render(ui, rect, viewport, summary, &mut y, settings);
         }
 
         if self.expanded {
             for slot in &mut self.slots {
-                if Self::render(ui, rect, viewport, slot, &mut y, row_height) {
+                if Self::render(ui, rect, viewport, slot, &mut y, settings) {
                     break;
                 }
             }
@@ -372,21 +460,13 @@ impl<S: Entry> Entry for Panel<S> {
     }
 }
 
-#[derive(Default, Deserialize, Serialize)]
-pub struct Window {
-    #[serde(skip)]
-    panel: Panel<Panel<Panel<Slot>>>, // nodes -> kind -> proc/chan/mem
-    min_time: Timestamp,
-    max_time: Timestamp,
-    window_start: Timestamp,
-    window_stop: Timestamp,
-}
-
 impl Window {
     fn ui(&mut self, ui: &mut egui::Ui) {
         // Use body font to figure out how tall to draw rectangles.
         let font_id = TextStyle::Body.resolve(ui.style());
         let row_height = ui.fonts().row_height(&font_id);
+        // Just set this on every frame for now
+        self.settings.row_height = row_height;
 
         ScrollArea::vertical()
             .auto_shrink([false; 2])
@@ -398,19 +478,9 @@ impl Window {
                 let rect = Rect::from_min_size(ui.min_rect().min, viewport.size());
 
                 // Root panel has no label
-                self.panel.content(ui, rect, viewport, row_height);
+                self.panel.content(ui, rect, viewport, &mut self.settings);
             });
     }
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(default)] // deserialize missing fields as default value
-pub struct ProfViewer {
-    window: Window,
-
-    #[cfg(not(target_arch = "wasm32"))]
-    #[serde(skip)]
-    last_update: Instant,
 }
 
 impl Default for ProfViewer {
@@ -437,7 +507,7 @@ impl ProfViewer {
             Default::default()
         };
 
-        let mut rng = rand::thread_rng();
+        let rng = &mut result.window.settings.rng;
         const NODES: i32 = 8192;
         const PROCS: i32 = 8;
         let mut node_slots = Vec::new();
@@ -451,7 +521,11 @@ impl ProfViewer {
                     // Leave items empty, we'll generate it later
                     proc_slots.push(Slot {
                         expanded: true,
-                        short_name: format!("{}{}", kind.chars().next().unwrap().to_lowercase(), proc),
+                        short_name: format!(
+                            "{}{}",
+                            kind.chars().next().unwrap().to_lowercase(),
+                            proc
+                        ),
                         long_name: format!("Node {} {} {}", node, kind, proc),
                         max_rows: rows,
                         items,
