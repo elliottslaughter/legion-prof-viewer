@@ -83,7 +83,7 @@ pub trait Entry {
         ui.painter().text(
             rect.min + style.spacing.item_spacing,
             Align2::LEFT_TOP,
-            &self.label_text(),
+            self.label_text(),
             font_id,
             visuals.text_color(),
         );
@@ -372,7 +372,7 @@ impl ProfViewer {
         let mut node_slots = Vec::new();
         for node in 0..NODES {
             let mut kind_slots = Vec::new();
-            for kind in vec!["cpu", "gpu", "util", "chan"] {
+            for kind in &["cpu", "gpu", "util", "chan"] {
                 let mut proc_slots = Vec::new();
                 for proc in 0..PROCS {
                     let rows: u64 = rng.gen_range(0..64);
@@ -395,8 +395,8 @@ impl ProfViewer {
                 }
                 kind_slots.push(Panel {
                     expanded: false,
-                    short_name: kind.to_owned(),
-                    long_name: kind.to_owned(),
+                    short_name: kind.to_string(),
+                    long_name: kind.to_string(),
                     summary: Some(Summary {}),
                     slots: proc_slots,
                 });
