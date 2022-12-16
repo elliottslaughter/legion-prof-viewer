@@ -42,6 +42,7 @@ struct UtilPoint {
 #[derive(Default)]
 struct Summary {
     utilization: Vec<UtilPoint>,
+    color: Color32,
 }
 
 #[derive(Default)]
@@ -164,7 +165,7 @@ impl Summary {
     }
 
     fn generate(&mut self, settings: &mut Settings) {
-        const LEVELS: i32 = 6;
+        const LEVELS: i32 = 8;
         let first = UtilPoint {
             time: 0.0,
             util: settings.rng.gen(),
@@ -199,12 +200,14 @@ impl Entry for Summary {
         ui.painter()
             .rect(rect, 0.0, visuals.bg_fill, visuals.bg_stroke);
 
+        let stroke = Stroke::new(visuals.bg_stroke.width, self.color);
+
         let mut last_point = None;
         for util in &self.utilization {
             // Convert utilization to screen space
             let point = rect.lerp(Vec2::new(util.time, 1.0 - util.util));
             if let Some(last) = last_point {
-                ui.painter().line_segment([last, point], visuals.bg_stroke);
+                ui.painter().line_segment([last, point], stroke);
             }
 
             last_point = Some(point);
@@ -513,7 +516,9 @@ impl ProfViewer {
         let mut node_slots = Vec::new();
         for node in 0..NODES {
             let mut kind_slots = Vec::new();
-            for kind in &["CPU", "GPU", "Util", "Chan"] {
+            let colors = &[Color32::BLUE, Color32::GREEN, Color32::RED, Color32::YELLOW];
+            for (i, kind) in ["CPU", "GPU", "Util", "Chan"].iter().enumerate() {
+                let color = colors[i];
                 let mut proc_slots = Vec::new();
                 for proc in 0..PROCS {
                     let rows: u64 = rng.gen_range(0..64);
@@ -535,7 +540,10 @@ impl ProfViewer {
                     expanded: false,
                     short_name: kind.to_lowercase(),
                     long_name: format!("Node {} {}", node, kind),
-                    summary: Some(Summary::default()),
+                    summary: Some(Summary {
+                        utilization: Vec::new(),
+                        color,
+                    }),
                     slots: proc_slots,
                 });
             }
