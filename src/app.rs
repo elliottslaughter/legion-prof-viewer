@@ -463,13 +463,34 @@ impl eframe::App for ProfViewer {
 
         egui::SidePanel::left("side_panel").show(ctx, |ui| {
             ui.heading("Legion Prof");
+            ui.label("Welcome to the Legion Prof tech demo. This is NOT a working profiler, because the data here is completely fake. However, this is a testbed for designing features for a potential future profiler interface. Feel free to click around and check it out.");
 
-            #[cfg(not(target_arch = "wasm32"))]
-            {
-                ui.label(format!("FPS: {:.0}", _fps));
-            }
+            ui.separator();
+
+            ui.label("Things you can do in this version:");
+
+            ui.label(" 1. Click a node to collapse it.");
+            ui.label(" 2. Click a processor/channel kind to expand it.");
+            ui.label(" 3. Click a processor or channel to collapse it.");
+            ui.label(" 4. Hover over a task to see a tooltip.");
+
+            ui.label("Things that do NOT work yet:");
+
+            ui.label(" 1. Pan/zoom.");
+            ui.label(" 2. Expand all of a kind.");
+            ui.label(" 3. Search.");
+            ui.label(" 4. Relationships (e.g., dependencies).");
+
+            ui.label("The app should stay responsive throughout.");
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    ui.label(format!("FPS: {:.0}", _fps));
+                }
+
+                ui.separator();
+
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 0.0;
                     ui.label("powered by ");
