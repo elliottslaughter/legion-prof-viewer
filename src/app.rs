@@ -141,6 +141,25 @@ impl Slot {
             UNEXPANDED_ROWS
         }
     }
+
+    fn generate(&mut self) {
+        let mut items = Vec::new();
+        for row in 0..self.max_rows {
+            let mut row_items = Vec::new();
+            const N: u64 = 1000;
+            for i in 0..N {
+                let start = (i as f32 + 0.05) / (N as f32);
+                let stop = (i as f32 + 0.95) / (N as f32);
+                row_items.push(Item {
+                    _row: row,
+                    start,
+                    stop,
+                });
+            }
+            items.push(row_items);
+        }
+        self.items = items;
+    }
 }
 
 impl Entry for Slot {
@@ -153,6 +172,10 @@ impl Entry for Slot {
         let mut hover_pos = response.hover_pos(); // where is the mouse hovering?
 
         if self.expanded {
+            if self.items.is_empty() {
+                self.generate();
+            }
+
             let style = ui.style();
             let visuals = style.interact_selectable(&response, false);
             ui.painter()
@@ -404,7 +427,7 @@ impl ProfViewer {
         };
 
         let mut rng = rand::thread_rng();
-        const NODES: i32 = 128;
+        const NODES: i32 = 8192;
         const PROCS: i32 = 8;
         let mut node_slots = Vec::new();
         for node in 0..NODES {
@@ -413,21 +436,8 @@ impl ProfViewer {
                 let mut proc_slots = Vec::new();
                 for proc in 0..PROCS {
                     let rows: u64 = rng.gen_range(0..64);
-                    let mut items = Vec::new();
-                    for row in 0..rows {
-                        let mut row_items = Vec::new();
-                        const N: u64 = 1000;
-                        for i in 0..N {
-                            let start = (i as f32 + 0.05) / (N as f32);
-                            let stop = (i as f32 + 0.95) / (N as f32);
-                            row_items.push(Item {
-                                _row: row,
-                                start,
-                                stop,
-                            });
-                        }
-                        items.push(row_items);
-                    }
+                    let items = Vec::new();
+                    // Leave items empty, we'll generate it later
                     proc_slots.push(Slot {
                         expanded: true,
                         short_name: format!("{}{}", kind.chars().next().unwrap(), proc),
