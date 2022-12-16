@@ -1,4 +1,4 @@
-use egui::{Align2, Color32, NumExt, Pos2, Rect, ScrollArea, Stroke, TextStyle, Vec2};
+use egui::{Align2, Color32, NumExt, Pos2, Rect, ScrollArea, Slider, Stroke, TextStyle, Vec2};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
@@ -59,6 +59,8 @@ struct Panel<S: Entry> {
     expanded: bool,
     short_name: String,
     long_name: String,
+    index: u64,
+    level: u64,
 
     summary: Option<Summary>,
     slots: Vec<S>,
@@ -67,8 +69,16 @@ struct Panel<S: Entry> {
 #[derive(Default, Deserialize, Serialize)]
 struct Settings {
     row_height: f32,
+
+    // Visible time range
     window_start: Timestamp,
     window_stop: Timestamp,
+
+    // Node visibility controls
+    min_node: u64,
+    max_node: u64,
+    node_visibility_changed: bool,
+
     #[serde(skip)]
     rng: rand::rngs::ThreadRng,
 }
@@ -96,7 +106,7 @@ trait Entry {
     fn label_text(&self) -> &str;
     fn hover_text(&self) -> &str;
 
-    fn label(&mut self, ui: &mut egui::Ui, rect: Rect) {
+    fn label(&mut self, ui: &mut egui::Ui, rect: Rect, settings: &mut Settings) {
         let response = ui.allocate_rect(
             rect,
             if self.is_expandable() {
@@ -126,7 +136,7 @@ trait Entry {
 
         if response.clicked() {
             // This will take effect next frame because we can't redraw this widget now
-            self.toggle_expanded();
+            self.toggle_expanded(settings);
         } else if response.hovered() {
             response.on_hover_text(self.hover_text());
         }
@@ -138,7 +148,7 @@ trait Entry {
 
     fn is_expandable(&self) -> bool;
 
-    fn toggle_expanded(&mut self);
+    fn toggle_expanded(&mut self, settings: &mut Settings);
 }
 
 impl Summary {
@@ -252,7 +262,7 @@ impl Entry for Summary {
         false
     }
 
-    fn toggle_expanded(&mut self) {
+    fn toggle_expanded(&mut self, _settings: &mut Settings) {
         unreachable!();
     }
 }
@@ -377,7 +387,7 @@ impl Entry for Slot {
         true
     }
 
-    fn toggle_expanded(&mut self) {
+    fn toggle_expanded(&mut self, _settings: &mut Settings) {
         self.expanded = !self.expanded;
     }
 }
@@ -427,7 +437,7 @@ impl<S: Entry> Panel<S> {
         let content_viewport = viewport.translate(Vec2::new(0.0, rect.min.y - min_y));
 
         slot.content(ui, content_subrect, content_viewport, settings);
-        slot.label(ui, label_subrect);
+        slot.label(ui, label_subrect, settings);
 
         false
     }
@@ -487,13 +497,31 @@ impl<S: Entry> Entry for Panel<S> {
         true
     }
 
-    fn toggle_expanded(&mut self) {
+    fn toggle_expanded(&mut self, settings: &mut Settings) {
         self.expanded = !self.expanded;
+        if self.level == 1 && self.expanded {
+            settings.min_node = settings.min_node.at_most(self.index);
+            settings.max_node = settings.max_node.at_least(self.index);
+        }
     }
 }
 
 impl Window {
     fn ui(&mut self, ui: &mut egui::Ui) {
+        // Handle expand/collapse settings from UI controls
+        if self.settings.node_visibility_changed {
+            for (i, node) in self.panel.slots.iter_mut().enumerate() {
+                let i = i as u64;
+                if i < self.settings.min_node || i > self.settings.max_node {
+                    if node.expanded {
+                        node.toggle_expanded(&mut self.settings);
+                    }
+                } else if !node.expanded {
+                    node.toggle_expanded(&mut self.settings);
+                }
+            }
+        }
+
         // Use body font to figure out how tall to draw rectangles.
         let font_id = TextStyle::Body.resolve(ui.style());
         let row_height = ui.fonts().row_height(&font_id);
@@ -586,6 +614,8 @@ impl ProfViewer {
                     expanded: false,
                     short_name: kind.to_lowercase(),
                     long_name: format!("Node {} {}", node, kind),
+                    index: i as u64,
+                    level: 2,
                     summary: Some(Summary {
                         utilization: Vec::new(),
                         color,
@@ -597,6 +627,8 @@ impl ProfViewer {
                 expanded: true,
                 short_name: format!("n{}", node),
                 long_name: format!("Node {}", node),
+                index: node as u64,
+                level: 1,
                 summary: None,
                 slots: kind_slots,
             });
@@ -605,9 +637,13 @@ impl ProfViewer {
             expanded: true,
             short_name: "root".to_owned(),
             long_name: "root".to_owned(),
+            index: 0,
+            level: 0,
             summary: None,
             slots: node_slots,
         };
+        result.window.settings.min_node = 0;
+        result.window.settings.max_node = result.window.panel.slots.len() as u64 - 1;
 
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -657,26 +693,30 @@ impl eframe::App for ProfViewer {
 
             ui.separator();
 
-            ui.label("Things you can do in this version:");
+            ui.heading("Expand/Collapse");
 
-            ui.label(" 1. Click a node to collapse it.");
-            ui.label(" 2. Click a processor/channel kind to expand it.");
-            ui.label(" 3. Click a processor or channel to collapse it.");
-            ui.label(" 4. Hover over a task to see a tooltip.");
-            ui.label(" 5. Hover the utilization chart to see a tooltip.");
-
-            ui.separator();
-
-            ui.label("Things that do NOT work yet:");
-
-            ui.label(" 1. Pan/zoom.");
-            ui.label(" 2. Expand all of a kind.");
-            ui.label(" 3. Search.");
-            ui.label(" 4. Relationships (e.g., dependencies).");
-
-            ui.separator();
-
-            ui.label("The app should stay responsive throughout.");
+            // Node selection
+            ui.label("Select visible nodes:");
+            let total = window.panel.slots.len().saturating_sub(1) as u64;
+            let mut first_node = window.settings.min_node;
+            let mut last_node = window.settings.max_node;
+            ui.add(Slider::new(&mut first_node, 0..=total).text("First"));
+            if first_node > last_node {
+                last_node = first_node;
+            }
+            ui.add(Slider::new(&mut last_node, 0..=total).text("Last"));
+            if first_node > last_node {
+                first_node = last_node;
+            }
+            window.settings.node_visibility_changed = false;
+            if first_node != window.settings.min_node {
+                window.settings.min_node = first_node;
+                window.settings.node_visibility_changed = true;
+            }
+            if last_node != window.settings.max_node {
+                window.settings.max_node = last_node;
+                window.settings.node_visibility_changed = true;
+            }
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 ui.horizontal(|ui| {
