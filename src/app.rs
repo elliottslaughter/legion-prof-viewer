@@ -507,7 +507,7 @@ impl<S: Entry> Entry for Panel<S> {
 }
 
 impl Window {
-    fn ui(&mut self, ui: &mut egui::Ui) {
+    fn content(&mut self, ui: &mut egui::Ui) {
         // Handle expand/collapse settings from UI controls
         if self.settings.node_visibility_changed {
             for (i, node) in self.panel.slots.iter_mut().enumerate() {
@@ -557,6 +557,30 @@ impl Window {
                         .line_segment([mid_bottom, bottom], visuals.fg_stroke);
                 }
             });
+    }
+
+    fn node_selection(&mut self, ui: &mut egui::Ui) {
+        ui.label("Select visible nodes:");
+        let total = self.panel.slots.len().saturating_sub(1) as u64;
+        let mut first_node = self.settings.min_node;
+        let mut last_node = self.settings.max_node;
+        ui.add(Slider::new(&mut first_node, 0..=total).text("First"));
+        if first_node > last_node {
+            last_node = first_node;
+        }
+        ui.add(Slider::new(&mut last_node, 0..=total).text("Last"));
+        if first_node > last_node {
+            first_node = last_node;
+        }
+        self.settings.node_visibility_changed = false;
+        if first_node != self.settings.min_node {
+            self.settings.min_node = first_node;
+            self.settings.node_visibility_changed = true;
+        }
+        if last_node != self.settings.max_node {
+            self.settings.max_node = last_node;
+            self.settings.node_visibility_changed = true;
+        }
     }
 }
 
@@ -694,29 +718,7 @@ impl eframe::App for ProfViewer {
             ui.separator();
 
             ui.heading("Expand/Collapse");
-
-            // Node selection
-            ui.label("Select visible nodes:");
-            let total = window.panel.slots.len().saturating_sub(1) as u64;
-            let mut first_node = window.settings.min_node;
-            let mut last_node = window.settings.max_node;
-            ui.add(Slider::new(&mut first_node, 0..=total).text("First"));
-            if first_node > last_node {
-                last_node = first_node;
-            }
-            ui.add(Slider::new(&mut last_node, 0..=total).text("Last"));
-            if first_node > last_node {
-                first_node = last_node;
-            }
-            window.settings.node_visibility_changed = false;
-            if first_node != window.settings.min_node {
-                window.settings.min_node = first_node;
-                window.settings.node_visibility_changed = true;
-            }
-            if last_node != window.settings.max_node {
-                window.settings.max_node = last_node;
-                window.settings.node_visibility_changed = true;
-            }
+            window.node_selection(ui);
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 ui.horizontal(|ui| {
@@ -740,7 +742,7 @@ impl eframe::App for ProfViewer {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            window.ui(ui);
+            window.content(ui);
             egui::warn_if_debug_build(ui);
         });
     }
