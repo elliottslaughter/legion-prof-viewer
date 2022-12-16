@@ -28,7 +28,7 @@ pub struct Timestamp(pub u64 /* ns */);
 
 // DO NOT derive (de)serialize, we will never serialize this
 pub struct Item {
-    row: u64,
+    _row: u64,
     start: f32,
     stop: f32,
 }
@@ -44,7 +44,7 @@ pub struct Slot {
     max_rows: u64,
 
     #[serde(skip)]
-    items: Vec<Item>,
+    items: Vec<Vec<Item>>, // row -> [item]
 }
 
 #[derive(Default, Deserialize, Serialize)]
@@ -148,7 +148,7 @@ impl Entry for Slot {
         &self.short_name
     }
 
-    fn content(&mut self, ui: &mut egui::Ui, rect: Rect, _viewport: Rect, _row_height: f32) {
+    fn content(&mut self, ui: &mut egui::Ui, rect: Rect, viewport: Rect, _row_height: f32) {
         let response = ui.allocate_rect(rect, egui::Sense::hover());
         let mut hover_pos = response.hover_pos(); // where is the mouse hovering?
 
@@ -159,33 +159,61 @@ impl Entry for Slot {
                 .rect(rect, 0.0, visuals.bg_fill, visuals.bg_stroke);
 
             let rows = self.rows();
-            for (i, item) in self.items.iter().enumerate() {
-                let min = rect.lerp(Vec2::new(
-                    item.start,
-                    (item.row as f32 + 0.05) / rows as f32,
-                ));
-                let max = rect.lerp(Vec2::new(item.stop, (item.row as f32 + 0.95) / rows as f32));
-                let color = match i % 6 {
-                    0 => Color32::BLUE,
-                    1 => Color32::RED,
-                    2 => Color32::GREEN,
-                    3 => Color32::YELLOW,
-                    4 => Color32::BROWN,
-                    5 => Color32::LIGHT_GREEN,
-                    _ => Color32::WHITE,
-                };
-                let item_rect = Rect::from_min_max(min, max);
-                if hover_pos.map_or(false, |h| item_rect.contains(h)) {
-                    hover_pos = None;
+            let mut i = 0;
+            for (row, row_items) in self.items.iter().enumerate() {
+                // Need to reverse the rows because we're working in screen space
+                let irow = self.items.len() - row - 1;
 
-                    // Hack: create a new response for this rect specifically
-                    // so we can use the hover methods...
-                    // (Elliott: I assume this is more efficient than allocating
-                    // every single rect.)
-                    let item_response = ui.allocate_rect(item_rect, egui::Sense::hover());
-                    item_response.on_hover_text(format!("Item: {} {}", item.start, item.stop));
+                // We want to do this first on rows, so that we can cut the
+                // entire row if we don't need it
+
+                // Compute bounds for the whole row
+                let row_min = rect.lerp(Vec2::new(0.0, (irow as f32 + 0.05) / rows as f32));
+                let row_max = rect.lerp(Vec2::new(1.0, (irow as f32 + 0.95) / rows as f32));
+
+                // Cull if out of bounds
+                // Note: need to shift by rect.min to get to viewport space
+                if row_max.y - rect.min.y < viewport.min.y {
+                    break;
+                } else if row_min.y - rect.min.y > viewport.max.y {
+                    continue;
                 }
-                ui.painter().rect(item_rect, 0.0, color, Stroke::NONE);
+
+                // Check if mouse is hovering over this row
+                let row_rect = Rect::from_min_max(row_min, row_max);
+                let row_hover = hover_pos.map_or(false, |h| row_rect.contains(h));
+
+                // Now handle the items
+                for item in row_items {
+                    let min = rect.lerp(Vec2::new(item.start, (irow as f32 + 0.05) / rows as f32));
+                    let max = rect.lerp(Vec2::new(item.stop, (irow as f32 + 0.95) / rows as f32));
+                    let color = match i % 7 {
+                        0 => Color32::BLUE,
+                        1 => Color32::RED,
+                        2 => Color32::GREEN,
+                        3 => Color32::YELLOW,
+                        4 => Color32::KHAKI,
+                        5 => Color32::DARK_GREEN,
+                        6 => Color32::DARK_BLUE,
+                        _ => Color32::WHITE,
+                    };
+                    i += 1;
+                    let item_rect = Rect::from_min_max(min, max);
+                    if row_hover && hover_pos.map_or(false, |h| item_rect.contains(h)) {
+                        hover_pos = None;
+
+                        // Hack: create a new response for this rect specifically
+                        // so we can use the hover methods...
+                        // (Elliott: I assume this is more efficient than allocating
+                        // every single rect.)
+                        let item_response = ui.allocate_rect(item_rect, egui::Sense::hover());
+                        item_response.on_hover_text(format!(
+                            "Item: {} {} Row: {}",
+                            item.start, item.stop, row
+                        ));
+                    }
+                    ui.painter().rect(item_rect, 0.0, color, Stroke::NONE);
+                }
             }
         }
     }
@@ -387,12 +415,18 @@ impl ProfViewer {
                     let rows: u64 = rng.gen_range(0..64);
                     let mut items = Vec::new();
                     for row in 0..rows {
+                        let mut row_items = Vec::new();
                         const N: u64 = 1000;
                         for i in 0..N {
                             let start = (i as f32 + 0.05) / (N as f32);
                             let stop = (i as f32 + 0.95) / (N as f32);
-                            items.push(Item { row, start, stop });
+                            row_items.push(Item {
+                                _row: row,
+                                start,
+                                stop,
+                            });
                         }
+                        items.push(row_items);
                     }
                     proc_slots.push(Slot {
                         expanded: true,
@@ -495,13 +529,6 @@ impl eframe::App for ProfViewer {
             ui.label("The app should stay responsive throughout.");
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    ui.label(format!("FPS: {:.0}", _fps));
-                }
-
-                ui.separator();
-
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 0.0;
                     ui.label("powered by ");
@@ -513,6 +540,12 @@ impl eframe::App for ProfViewer {
                     );
                     ui.label(".");
                 });
+
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    ui.separator();
+                    ui.label(format!("FPS: {:.0}", _fps));
+                }
             });
         });
 
