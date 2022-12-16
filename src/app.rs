@@ -646,6 +646,7 @@ impl eframe::App for ProfViewer {
             ui.label(" 2. Click a processor/channel kind to expand it.");
             ui.label(" 3. Click a processor or channel to collapse it.");
             ui.label(" 4. Hover over a task to see a tooltip.");
+            ui.label(" 5. Hover the utilization chart to see a tooltip.");
 
             ui.separator();
 
