@@ -150,6 +150,7 @@ impl Entry for Slot {
 
     fn content(&mut self, ui: &mut egui::Ui, rect: Rect, _viewport: Rect, _row_height: f32) {
         let response = ui.allocate_rect(rect, egui::Sense::hover());
+        let mut hover_pos = response.hover_pos(); // where is the mouse hovering?
 
         let style = ui.style();
         let visuals = style.interact_selectable(&response, false);
@@ -172,8 +173,18 @@ impl Entry for Slot {
                     5 => Color32::LIGHT_GREEN,
                     _ => Color32::WHITE,
                 };
-                ui.painter()
-                    .rect(Rect::from_min_max(min, max), 0.0, color, Stroke::NONE);
+                let item_rect = Rect::from_min_max(min, max);
+                if hover_pos.map_or(false, |h| item_rect.contains(h)) {
+                    hover_pos = None;
+
+                    // Hack: create a new response for this rect specifically
+                    // so we can use the hover methods...
+                    // (Elliott: I assume this is more efficient than allocating
+                    // every single rect.)
+                    let item_response = ui.allocate_rect(item_rect, egui::Sense::hover());
+                    item_response.on_hover_text(format!("Item: {} {}", item.start, item.stop));
+                }
+                ui.painter().rect(item_rect, 0.0, color, Stroke::NONE);
             }
         }
     }
