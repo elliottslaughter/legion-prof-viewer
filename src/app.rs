@@ -152,11 +152,12 @@ impl Entry for Slot {
         let response = ui.allocate_rect(rect, egui::Sense::hover());
         let mut hover_pos = response.hover_pos(); // where is the mouse hovering?
 
-        let style = ui.style();
-        let visuals = style.interact_selectable(&response, false);
-        ui.painter()
-            .rect(rect, 0.0, visuals.bg_fill, visuals.bg_stroke);
         if self.expanded {
+            let style = ui.style();
+            let visuals = style.interact_selectable(&response, false);
+            ui.painter()
+                .rect(rect, 0.0, visuals.bg_fill, visuals.bg_stroke);
+
             let rows = self.rows();
             for (i, item) in self.items.iter().enumerate() {
                 let min = rect.lerp(Vec2::new(
