@@ -212,7 +212,7 @@ impl<S: Entry> Panel<S> {
         y: &mut f32,
         row_height: f32,
     ) -> bool {
-        const LABEL_WIDTH: f32 = 100.0;
+        const LABEL_WIDTH: f32 = 80.0;
         const COL_PADDING: f32 = 4.0;
         const ROW_PADDING: f32 = 4.0;
 
@@ -263,20 +263,27 @@ impl<S: Entry> Entry for Panel<S> {
             Self::render(ui, rect, screenspace_offset, summary, &mut y, row_height);
         }
 
-        for slot in &mut self.slots {
-            if Self::render(ui, rect, screenspace_offset, slot, &mut y, row_height) {
-                break;
+        if self.expanded {
+            for slot in &mut self.slots {
+                if Self::render(ui, rect, screenspace_offset, slot, &mut y, row_height) {
+                    break;
+                }
             }
         }
     }
 
     fn height(&self, row_height: f32) -> f32 {
+        const UNEXPANDED_ROWS: u64 = 4;
         const ROW_PADDING: f32 = 4.0;
 
         let mut total = 0.0;
-        let mut rows = 0;
+        let mut rows: i64 = 0;
         if let Some(summary) = &self.summary {
             total += summary.height(row_height);
+            rows += 1;
+        } else if !self.expanded {
+            // Need some minimum space if this panel has no summary and is collapsed
+            total += UNEXPANDED_ROWS as f32 * row_height;
             rows += 1;
         }
 
@@ -284,7 +291,7 @@ impl<S: Entry> Entry for Panel<S> {
             for slot in &self.slots {
                 total += slot.height(row_height);
             }
-            rows += self.slots.len();
+            rows += self.slots.len() as i64;
         }
 
         total += (rows - 1).at_least(0) as f32 * ROW_PADDING;
@@ -327,11 +334,6 @@ impl Window {
 
                 let rect = Rect::from_min_size(ui.min_rect().min, viewport.size());
 
-                println!("height {}", height);
-                println!("viewport {:?}", viewport);
-                println!("min_rect {:?}", ui.min_rect());
-                println!("rect {:?}", rect);
-
                 // Root panel has no label
                 self.panel.content(ui, rect, screenspace_offset, row_height);
             });
@@ -373,8 +375,8 @@ impl ProfViewer {
         };
 
         let mut rng = rand::thread_rng();
-        const NODES: i32 = 1;
-        const PROCS: i32 = 1;
+        const NODES: i32 = 4;
+        const PROCS: i32 = 8;
         let mut node_slots = Vec::new();
         for node in 0..NODES {
             let mut kind_slots = Vec::new();
@@ -392,7 +394,7 @@ impl ProfViewer {
                         }
                     }
                     proc_slots.push(Slot {
-                        expanded: false,
+                        expanded: true,
                         short_name: format!("{}{}", kind.chars().next().unwrap(), proc),
                         long_name: format!("{}{}", kind, proc),
                         max_rows: rows,
@@ -408,7 +410,7 @@ impl ProfViewer {
                 });
             }
             node_slots.push(Panel {
-                expanded: false,
+                expanded: true,
                 short_name: format!("n{}", node),
                 long_name: format!("node{}", node),
                 summary: None,
@@ -416,7 +418,7 @@ impl ProfViewer {
             });
         }
         result.window.panel = Panel {
-            expanded: false,
+            expanded: true,
             short_name: "root".to_owned(),
             long_name: "root".to_owned(),
             summary: None,
