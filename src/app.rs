@@ -95,7 +95,7 @@ pub trait Entry {
         }
     }
 
-    fn content(&mut self, ui: &mut egui::Ui, rect: Rect, screenspace_offset: Vec2, row_height: f32);
+    fn content(&mut self, ui: &mut egui::Ui, rect: Rect, viewport: Rect, row_height: f32);
 
     fn height(&self, row_height: f32) -> f32;
 
@@ -113,7 +113,7 @@ impl Entry for Summary {
         &mut self,
         ui: &mut egui::Ui,
         rect: Rect,
-        screenspace_offset: Vec2,
+        viewport: Rect,
         _row_height: f32,
     ) {
         let response = ui.allocate_rect(rect, egui::Sense::hover());
@@ -158,7 +158,7 @@ impl Entry for Slot {
         &mut self,
         ui: &mut egui::Ui,
         rect: Rect,
-        screenspace_offset: Vec2,
+        viewport: Rect,
         _row_height: f32,
     ) {
         let response = ui.allocate_rect(rect, egui::Sense::hover());
@@ -207,7 +207,7 @@ impl<S: Entry> Panel<S> {
     fn render<T: Entry>(
         ui: &mut egui::Ui,
         rect: Rect,
-        screenspace_offset: Vec2,
+        viewport: Rect,
         slot: &mut T,
         y: &mut f32,
         row_height: f32,
@@ -222,10 +222,9 @@ impl<S: Entry> Panel<S> {
         *y = max_y + ROW_PADDING;
 
         // Cull if out of bounds
-        let viewport = rect.translate(screenspace_offset);
-        if max_y < rect.min.y {
+        if max_y - rect.min.y < viewport.min.y {
             return false;
-        } else if min_y > rect.max.y {
+        } else if min_y - rect.min.y > viewport.max.y {
             return true;
         }
 
@@ -239,8 +238,10 @@ impl<S: Entry> Panel<S> {
             Rect::from_min_max(Pos2::new(label_min, min_y), Pos2::new(label_max, max_y));
         let content_subrect =
             Rect::from_min_max(Pos2::new(content_min, min_y), Pos2::new(content_max, max_y));
+        let content_viewport = Rect::from_min_size(Pos2::ZERO, content_subrect.size());
+
+        slot.content(ui, content_subrect, content_viewport, row_height);
         slot.label(ui, label_subrect);
-        slot.content(ui, content_subrect, screenspace_offset, row_height);
 
         false
     }
@@ -255,17 +256,17 @@ impl<S: Entry> Entry for Panel<S> {
         &mut self,
         ui: &mut egui::Ui,
         rect: Rect,
-        screenspace_offset: Vec2,
+        viewport: Rect,
         row_height: f32,
     ) {
         let mut y = rect.min.y;
         if let Some(summary) = &mut self.summary {
-            Self::render(ui, rect, screenspace_offset, summary, &mut y, row_height);
+            Self::render(ui, rect, viewport, summary, &mut y, row_height);
         }
 
         if self.expanded {
             for slot in &mut self.slots {
-                if Self::render(ui, rect, screenspace_offset, slot, &mut y, row_height) {
+                if Self::render(ui, rect, viewport, slot, &mut y, row_height) {
                     break;
                 }
             }
@@ -330,12 +331,10 @@ impl Window {
                 ui.set_height(height);
                 ui.set_width(ui.available_width());
 
-                let screenspace_offset = viewport.min - ui.min_rect().min;
-
                 let rect = Rect::from_min_size(ui.min_rect().min, viewport.size());
 
                 // Root panel has no label
-                self.panel.content(ui, rect, screenspace_offset, row_height);
+                self.panel.content(ui, rect, viewport, row_height);
             });
     }
 }
@@ -375,7 +374,7 @@ impl ProfViewer {
         };
 
         let mut rng = rand::thread_rng();
-        const NODES: i32 = 4;
+        const NODES: i32 = 16;
         const PROCS: i32 = 8;
         let mut node_slots = Vec::new();
         for node in 0..NODES {
