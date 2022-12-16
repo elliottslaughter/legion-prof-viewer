@@ -189,7 +189,9 @@ impl Entry for Summary {
     }
 
     fn content(&mut self, ui: &mut egui::Ui, rect: Rect, _viewport: Rect, settings: &mut Settings) {
+        const TOOLTIP_RADIUS: f32 = 4.0;
         let response = ui.allocate_rect(rect, egui::Sense::hover());
+        let hover_pos = response.hover_pos(); // where is the mouse hovering?
 
         if self.utilization.is_empty() {
             self.generate(settings);
@@ -202,7 +204,10 @@ impl Entry for Summary {
 
         let stroke = Stroke::new(visuals.bg_stroke.width, self.color);
 
+        let mut last_util = None;
+        let mut hover_util = None;
         let mut last_point = None;
+        let mut last_last_point: Option<Pos2> = None;
         for util in &self.utilization {
             // Convert utilization to screen space
             let point = rect.lerp(Vec2::new(util.time, 1.0 - util.util));
@@ -210,7 +215,31 @@ impl Entry for Summary {
                 ui.painter().line_segment([last, point], stroke);
             }
 
+            if let (Some(hover), Some(last), Some(last_last)) =
+                (hover_pos, last_point, last_last_point)
+            {
+                let point_dist = (point.x - hover.x).abs();
+                let last_dist = (last.x - hover.x).abs();
+                let last_last_dist = (last_last.x - hover.x).abs();
+                if last_dist < point_dist && last_dist < last_last_dist {
+                    ui.painter()
+                        .circle_stroke(last, TOOLTIP_RADIUS, visuals.fg_stroke);
+                    hover_util = last_util;
+                }
+            }
+
+            last_last_point = last_point;
             last_point = Some(point);
+            last_util = Some(util);
+        }
+
+        if let Some(util) = hover_util {
+            let util_rect = Rect::from_min_max(
+                rect.lerp(Vec2::new(util.time - 0.05, 0.0)),
+                rect.lerp(Vec2::new(util.time + 0.05, 1.0)),
+            );
+            let util_response = ui.allocate_rect(util_rect, egui::Sense::hover());
+            util_response.on_hover_text(format!("{:.0}% Utilization", util.util * 100.0));
         }
     }
 
