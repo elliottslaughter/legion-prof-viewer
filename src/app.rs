@@ -369,7 +369,7 @@ impl ProfViewer {
         };
 
         let mut rng = rand::thread_rng();
-        const NODES: i32 = 1024;
+        const NODES: i32 = 128;
         const PROCS: i32 = 8;
         let mut node_slots = Vec::new();
         for node in 0..NODES {
