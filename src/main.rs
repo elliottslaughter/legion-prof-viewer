@@ -9,7 +9,7 @@ fn main() {
 
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(
-        "eframe template",
+        "Legion Prof",
         native_options,
         Box::new(|cc| Box::new(test_egui::ProfViewer::new(cc))),
     );
