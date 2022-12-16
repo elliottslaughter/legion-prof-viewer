@@ -467,7 +467,7 @@ impl<S: Entry> Entry for Panel<S> {
     }
 
     fn height(&self, row_height: f32) -> f32 {
-        const UNEXPANDED_ROWS: u64 = 4;
+        const UNEXPANDED_ROWS: u64 = 2;
         const ROW_PADDING: f32 = 4.0;
 
         let mut total = 0.0;
