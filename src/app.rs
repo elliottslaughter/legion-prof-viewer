@@ -182,10 +182,10 @@ impl Summary {
 
 impl Entry for Summary {
     fn label_text(&self) -> &str {
-        "Summary"
+        "avg"
     }
     fn hover_text(&self) -> &str {
-        "Utilization Plot of Processor/Channel/Memory Usage"
+        "Utilization Plot of Average Usage Over Time"
     }
 
     fn content(&mut self, ui: &mut egui::Ui, rect: Rect, _viewport: Rect, settings: &mut Settings) {
@@ -391,7 +391,7 @@ impl<S: Entry> Panel<S> {
         y: &mut f32,
         settings: &mut Settings,
     ) -> bool {
-        const LABEL_WIDTH: f32 = 80.0;
+        const LABEL_WIDTH: f32 = 60.0;
         const COL_PADDING: f32 = 4.0;
         const ROW_PADDING: f32 = 4.0;
 
