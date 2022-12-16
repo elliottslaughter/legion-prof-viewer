@@ -33,21 +33,21 @@ pub struct Item {
     stop: f32,
 }
 
-#[derive(Deserialize, Serialize)]
-pub struct Summary {}
+#[derive(Default)]
+pub struct Summary {
+    utilization: Vec<f32>,
+}
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Default)]
 pub struct Slot {
     expanded: bool,
     short_name: String,
     long_name: String,
     max_rows: u64,
-
-    #[serde(skip)]
     items: Vec<Vec<Item>>, // row -> [item]
 }
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Default)]
 pub struct Panel<S: Entry> {
     expanded: bool,
     short_name: String,
@@ -59,6 +59,7 @@ pub struct Panel<S: Entry> {
 
 pub trait Entry {
     fn label_text(&self) -> &str;
+    fn hover_text(&self) -> &str;
 
     fn label(&mut self, ui: &mut egui::Ui, rect: Rect) {
         let response = ui.allocate_rect(
@@ -88,10 +89,11 @@ pub trait Entry {
             visuals.text_color(),
         );
 
-        // This will take effect next frame because we can't redraw this widget now
-        // FIXME: this creates inconsistency because this updates before the content
         if response.clicked() {
+            // This will take effect next frame because we can't redraw this widget now
             self.toggle_expanded();
+        } else if response.hovered() {
+            response.on_hover_text(self.hover_text());
         }
     }
 
@@ -107,6 +109,9 @@ pub trait Entry {
 impl Entry for Summary {
     fn label_text(&self) -> &str {
         "Summary"
+    }
+    fn hover_text(&self) -> &str {
+        "Utilization Plot of Processor/Channel/Memory Usage"
     }
 
     fn content(&mut self, ui: &mut egui::Ui, rect: Rect, _viewport: Rect, _row_height: f32) {
@@ -165,6 +170,9 @@ impl Slot {
 impl Entry for Slot {
     fn label_text(&self) -> &str {
         &self.short_name
+    }
+    fn hover_text(&self) -> &str {
+        &self.long_name
     }
 
     fn content(&mut self, ui: &mut egui::Ui, rect: Rect, viewport: Rect, _row_height: f32) {
@@ -309,6 +317,9 @@ impl<S: Entry> Entry for Panel<S> {
     fn label_text(&self) -> &str {
         &self.short_name
     }
+    fn hover_text(&self) -> &str {
+        &self.long_name
+    }
 
     fn content(&mut self, ui: &mut egui::Ui, rect: Rect, viewport: Rect, row_height: f32) {
         let mut y = rect.min.y;
@@ -432,7 +443,7 @@ impl ProfViewer {
         let mut node_slots = Vec::new();
         for node in 0..NODES {
             let mut kind_slots = Vec::new();
-            for kind in &["cpu", "gpu", "util", "chan"] {
+            for kind in &["CPU", "GPU", "Util", "Chan"] {
                 let mut proc_slots = Vec::new();
                 for proc in 0..PROCS {
                     let rows: u64 = rng.gen_range(0..64);
@@ -440,24 +451,24 @@ impl ProfViewer {
                     // Leave items empty, we'll generate it later
                     proc_slots.push(Slot {
                         expanded: true,
-                        short_name: format!("{}{}", kind.chars().next().unwrap(), proc),
-                        long_name: format!("{}{}", kind, proc),
+                        short_name: format!("{}{}", kind.chars().next().unwrap().to_lowercase(), proc),
+                        long_name: format!("Node {} {} {}", node, kind, proc),
                         max_rows: rows,
                         items,
                     });
                 }
                 kind_slots.push(Panel {
                     expanded: false,
-                    short_name: kind.to_string(),
-                    long_name: kind.to_string(),
-                    summary: Some(Summary {}),
+                    short_name: kind.to_lowercase(),
+                    long_name: format!("Node {} {}", node, kind),
+                    summary: Some(Summary::default()),
                     slots: proc_slots,
                 });
             }
             node_slots.push(Panel {
                 expanded: true,
                 short_name: format!("n{}", node),
-                long_name: format!("node{}", node),
+                long_name: format!("Node {}", node),
                 summary: None,
                 slots: kind_slots,
             });
