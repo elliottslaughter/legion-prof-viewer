@@ -837,15 +837,22 @@ impl eframe::App for ProfApp {
             cx.row_height = row_height;
 
             let mut remaining = windows.len();
-            for window in windows.iter_mut() {
-                egui::Frame::group(ui.style()).show(ui, |ui| {
-                    ui.push_id(window.index, |ui| {
-                        ui.set_height(ui.available_height() / (remaining as f32));
-                        ui.set_width(ui.available_width());
-                        window.content(ui, cx);
-                        remaining -= 1;
+            // Only wrap in a frame if more than one profile
+            if remaining > 1 {
+                for window in windows.iter_mut() {
+                    egui::Frame::group(ui.style()).show(ui, |ui| {
+                        ui.push_id(window.index, |ui| {
+                            ui.set_height(ui.available_height() / (remaining as f32));
+                            ui.set_width(ui.available_width());
+                            window.content(ui, cx);
+                            remaining -= 1;
+                        });
                     });
-                });
+                }
+            } else {
+                for window in windows.iter_mut() {
+                    window.content(ui, cx);
+                }
             }
         });
     }
