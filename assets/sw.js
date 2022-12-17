@@ -1,9 +1,9 @@
-var cacheName = 'egui-template-pwa';
+var cacheName = 'legion-prof-viewer-pwa';
 var filesToCache = [
   './',
   './index.html',
-  './eframe_template.js',
-  './eframe_template_bg.wasm',
+  './legion_prof_viewer.js',
+  './legion_prof_viewer_bg.wasm',
 ];
 
 /* Start the service worker and cache all of the app's content */

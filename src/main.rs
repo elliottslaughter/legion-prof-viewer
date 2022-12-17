@@ -11,7 +11,7 @@ fn main() {
     eframe::run_native(
         "Legion Prof",
         native_options,
-        Box::new(|cc| Box::new(test_egui::ProfViewer::new(cc))),
+        Box::new(|cc| Box::new(legion_prof_viewer::ProfViewer::new(cc))),
     );
 }
 
@@ -30,7 +30,7 @@ fn main() {
         eframe::start_web(
             "the_canvas_id", // hardcode it
             web_options,
-            Box::new(|cc| Box::new(test_egui::ProfViewer::new(cc))),
+            Box::new(|cc| Box::new(legion_prof_viewer::ProfViewer::new(cc))),
         )
         .await
         .expect("failed to start eframe");
