@@ -567,6 +567,50 @@ impl Window {
             *min_node = *max_node;
         }
     }
+
+    fn expand_collapse(&mut self, ui: &mut egui::Ui) {
+        let mut toggle_all = |label, toggle| {
+            for node in &mut self.panel.slots {
+                for kind in &mut node.slots {
+                    if kind.expanded == toggle && kind.label_text() == label {
+                        kind.toggle_expanded();
+                    }
+                }
+            }
+        };
+
+        ui.heading("Expand/Collapse");
+        ui.label("Expand by kind:");
+        ui.horizontal(|ui| {
+            if ui.button("CPU").clicked() {
+                toggle_all("cpu", false);
+            }
+            if ui.button("GPU").clicked() {
+                toggle_all("gpu", false);
+            }
+            if ui.button("Util").clicked() {
+                toggle_all("util", false);
+            }
+            if ui.button("Chan").clicked() {
+                toggle_all("chan", false);
+            }
+        });
+        ui.label("Collapse by kind:");
+        ui.horizontal(|ui| {
+            if ui.button("CPU").clicked() {
+                toggle_all("cpu", true);
+            }
+            if ui.button("GPU").clicked() {
+                toggle_all("gpu", true);
+            }
+            if ui.button("Util").clicked() {
+                toggle_all("util", true);
+            }
+            if ui.button("Chan").clicked() {
+                toggle_all("chan", true);
+            }
+        });
+    }
 }
 
 impl Default for ProfViewer {
@@ -699,9 +743,11 @@ impl eframe::App for ProfViewer {
 
             ui.separator();
 
+            const WIDGET_PADDING: f32 = 8.0;
+            ui.add_space(WIDGET_PADDING);
             window.node_selection(ui);
-
-            ui.heading("Expand/Collapse");
+            ui.add_space(WIDGET_PADDING);
+            window.expand_collapse(ui);
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 ui.horizontal(|ui| {
