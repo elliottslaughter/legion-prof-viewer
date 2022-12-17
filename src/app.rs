@@ -59,7 +59,6 @@ struct Panel<S: Entry> {
     expanded: bool,
     short_name: String,
     long_name: String,
-    index: u64,
     level: u64,
 
     summary: Option<Summary>,
@@ -74,10 +73,9 @@ struct Settings {
     window_start: Timestamp,
     window_stop: Timestamp,
 
-    // Node visibility controls
+    // Node selection controls
     min_node: u64,
     max_node: u64,
-    node_visibility_changed: bool,
 
     #[serde(skip)]
     rng: rand::rngs::ThreadRng,
@@ -106,7 +104,7 @@ trait Entry {
     fn label_text(&self) -> &str;
     fn hover_text(&self) -> &str;
 
-    fn label(&mut self, ui: &mut egui::Ui, rect: Rect, settings: &mut Settings) {
+    fn label(&mut self, ui: &mut egui::Ui, rect: Rect) {
         let response = ui.allocate_rect(
             rect,
             if self.is_expandable() {
@@ -136,7 +134,7 @@ trait Entry {
 
         if response.clicked() {
             // This will take effect next frame because we can't redraw this widget now
-            self.toggle_expanded(settings);
+            self.toggle_expanded();
         } else if response.hovered() {
             response.on_hover_text(self.hover_text());
         }
@@ -144,11 +142,11 @@ trait Entry {
 
     fn content(&mut self, ui: &mut egui::Ui, rect: Rect, viewport: Rect, settings: &mut Settings);
 
-    fn height(&self, row_height: f32) -> f32;
+    fn height(&self, settings: &Settings) -> f32;
 
     fn is_expandable(&self) -> bool;
 
-    fn toggle_expanded(&mut self, settings: &mut Settings);
+    fn toggle_expanded(&mut self);
 }
 
 impl Summary {
@@ -253,16 +251,16 @@ impl Entry for Summary {
         }
     }
 
-    fn height(&self, row_height: f32) -> f32 {
+    fn height(&self, settings: &Settings) -> f32 {
         const ROWS: u64 = 4;
-        ROWS as f32 * row_height
+        ROWS as f32 * settings.row_height
     }
 
     fn is_expandable(&self) -> bool {
         false
     }
 
-    fn toggle_expanded(&mut self, _settings: &mut Settings) {
+    fn toggle_expanded(&mut self) {
         unreachable!();
     }
 }
@@ -379,15 +377,15 @@ impl Entry for Slot {
         }
     }
 
-    fn height(&self, row_height: f32) -> f32 {
-        self.rows() as f32 * row_height
+    fn height(&self, settings: &Settings) -> f32 {
+        self.rows() as f32 * settings.row_height
     }
 
     fn is_expandable(&self) -> bool {
         true
     }
 
-    fn toggle_expanded(&mut self, _settings: &mut Settings) {
+    fn toggle_expanded(&mut self) {
         self.expanded = !self.expanded;
     }
 }
@@ -408,7 +406,7 @@ impl<S: Entry> Panel<S> {
         // Compute the size of this slot
         // This is in screen (i.e., rect) space
         let min_y = *y;
-        let max_y = min_y + slot.height(settings.row_height);
+        let max_y = min_y + slot.height(settings);
         *y = max_y + ROW_PADDING;
 
         // Cull if out of bounds
@@ -437,9 +435,13 @@ impl<S: Entry> Panel<S> {
         let content_viewport = viewport.translate(Vec2::new(0.0, rect.min.y - min_y));
 
         slot.content(ui, content_subrect, content_viewport, settings);
-        slot.label(ui, label_subrect, settings);
+        slot.label(ui, label_subrect);
 
         false
+    }
+
+    fn is_slot_visible(parent_level: u64, index: u64, settings: &Settings) -> bool {
+        parent_level != 0 || (index >= settings.min_node && index <= settings.max_node)
     }
 }
 
@@ -458,7 +460,12 @@ impl<S: Entry> Entry for Panel<S> {
         }
 
         if self.expanded {
-            for slot in &mut self.slots {
+            for (i, slot) in self.slots.iter_mut().enumerate() {
+                // Apply visibility settings
+                if !Self::is_slot_visible(self.level, i as u64, settings) {
+                    continue;
+                }
+
                 if Self::render(ui, rect, viewport, slot, &mut y, settings) {
                     break;
                 }
@@ -466,26 +473,31 @@ impl<S: Entry> Entry for Panel<S> {
         }
     }
 
-    fn height(&self, row_height: f32) -> f32 {
+    fn height(&self, settings: &Settings) -> f32 {
         const UNEXPANDED_ROWS: u64 = 2;
         const ROW_PADDING: f32 = 4.0;
 
         let mut total = 0.0;
         let mut rows: i64 = 0;
         if let Some(summary) = &self.summary {
-            total += summary.height(row_height);
+            total += summary.height(settings);
             rows += 1;
         } else if !self.expanded {
             // Need some minimum space if this panel has no summary and is collapsed
-            total += UNEXPANDED_ROWS as f32 * row_height;
+            total += UNEXPANDED_ROWS as f32 * settings.row_height;
             rows += 1;
         }
 
         if self.expanded {
-            for slot in &self.slots {
-                total += slot.height(row_height);
+            for (i, slot) in self.slots.iter().enumerate() {
+                // Apply visibility settings
+                if !Self::is_slot_visible(self.level, i as u64, settings) {
+                    continue;
+                }
+
+                total += slot.height(settings);
+                rows += 1;
             }
-            rows += self.slots.len() as i64;
         }
 
         total += (rows - 1).at_least(0) as f32 * ROW_PADDING;
@@ -497,31 +509,13 @@ impl<S: Entry> Entry for Panel<S> {
         true
     }
 
-    fn toggle_expanded(&mut self, settings: &mut Settings) {
+    fn toggle_expanded(&mut self) {
         self.expanded = !self.expanded;
-        if self.level == 1 && self.expanded {
-            settings.min_node = settings.min_node.at_most(self.index);
-            settings.max_node = settings.max_node.at_least(self.index);
-        }
     }
 }
 
 impl Window {
     fn content(&mut self, ui: &mut egui::Ui) {
-        // Handle expand/collapse settings from UI controls
-        if self.settings.node_visibility_changed {
-            for (i, node) in self.panel.slots.iter_mut().enumerate() {
-                let i = i as u64;
-                if i < self.settings.min_node || i > self.settings.max_node {
-                    if node.expanded {
-                        node.toggle_expanded(&mut self.settings);
-                    }
-                } else if !node.expanded {
-                    node.toggle_expanded(&mut self.settings);
-                }
-            }
-        }
-
         // Use body font to figure out how tall to draw rectangles.
         let font_id = TextStyle::Body.resolve(ui.style());
         let row_height = ui.fonts().row_height(&font_id);
@@ -531,7 +525,7 @@ impl Window {
         ScrollArea::vertical()
             .auto_shrink([false; 2])
             .show_viewport(ui, |ui, viewport| {
-                let height = self.panel.height(row_height);
+                let height = self.panel.height(&self.settings);
                 ui.set_height(height);
                 ui.set_width(ui.available_width());
 
@@ -560,26 +554,17 @@ impl Window {
     }
 
     fn node_selection(&mut self, ui: &mut egui::Ui) {
-        ui.label("Select visible nodes:");
+        ui.heading("Node Selection");
         let total = self.panel.slots.len().saturating_sub(1) as u64;
-        let mut first_node = self.settings.min_node;
-        let mut last_node = self.settings.max_node;
-        ui.add(Slider::new(&mut first_node, 0..=total).text("First"));
-        if first_node > last_node {
-            last_node = first_node;
+        let min_node = &mut self.settings.min_node;
+        let max_node = &mut self.settings.max_node;
+        ui.add(Slider::new(min_node, 0..=total).text("First"));
+        if *min_node > *max_node {
+            *max_node = *min_node;
         }
-        ui.add(Slider::new(&mut last_node, 0..=total).text("Last"));
-        if first_node > last_node {
-            first_node = last_node;
-        }
-        self.settings.node_visibility_changed = false;
-        if first_node != self.settings.min_node {
-            self.settings.min_node = first_node;
-            self.settings.node_visibility_changed = true;
-        }
-        if last_node != self.settings.max_node {
-            self.settings.max_node = last_node;
-            self.settings.node_visibility_changed = true;
+        ui.add(Slider::new(max_node, 0..=total).text("Last"));
+        if *min_node > *max_node {
+            *min_node = *max_node;
         }
     }
 }
@@ -638,7 +623,6 @@ impl ProfViewer {
                     expanded: false,
                     short_name: kind.to_lowercase(),
                     long_name: format!("Node {} {}", node, kind),
-                    index: i as u64,
                     level: 2,
                     summary: Some(Summary {
                         utilization: Vec::new(),
@@ -651,7 +635,6 @@ impl ProfViewer {
                 expanded: true,
                 short_name: format!("n{}", node),
                 long_name: format!("Node {}", node),
-                index: node as u64,
                 level: 1,
                 summary: None,
                 slots: kind_slots,
@@ -661,7 +644,6 @@ impl ProfViewer {
             expanded: true,
             short_name: "root".to_owned(),
             long_name: "root".to_owned(),
-            index: 0,
             level: 0,
             summary: None,
             slots: node_slots,
@@ -717,8 +699,9 @@ impl eframe::App for ProfViewer {
 
             ui.separator();
 
-            ui.heading("Expand/Collapse");
             window.node_selection(ui);
+
+            ui.heading("Expand/Collapse");
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 ui.horizontal(|ui| {
