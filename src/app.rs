@@ -8,23 +8,33 @@ use std::time::Instant;
 struct Timestamp(u64 /* ns */);
 
 /// Overview:
-///   Window -> Panel
+///   ProfApp -> Context, Window *
+///   Window -> Config, Panel
 ///   Panel -> Summary, { Panel | Slot } *
 ///   Summary
 ///   Slot -> Item *
 ///
+/// Context:
+///   * Global configuration state (i.e., for all profiles)
+///
 /// Window:
+///   * One Windows per profile
 ///   * Owns the ScrollArea (there is only **ONE** ScrollArea)
 ///   * Handles pan/zoom (there is only **ONE** pan/zoom setting)
 ///
+/// Config:
+///   * Window configuration state (i.e., specific to a profile)
+///
 /// Panel:
+///   * One Panel for each level of nesting in the profile (root, node, kind)
 ///   * Table widget for (nested) cells
 ///   * Each row contains: label, content
 ///
-/// Summary
+/// Summary:
 ///   * Utilization widget
 ///
 /// Slot:
+///   * One Slot for each processor, channel, memory
 ///   * Viewer widget for items
 
 // DO NOT derive (de)serialize, we will never serialize this
