@@ -10,8 +10,9 @@ Tech demo for potential future Legion Prof interface.
 - [x] Vertical cursor
 - [x] Node selection
 - [x] Expand all of a kind (cpu/gpu/etc)Rects on 1-row proc show up at top
-- [x] Stop hardcoding kindsDONE Multiple profiles
-- [ ] timestamps on the vertical cursor
+- [x] Stop hardcoding kinds
+- [x] Multiple profiles
+- [ ] Timestamps on the vertical cursor
 - [ ] Window pan/zoom
 - [ ] There is a bug when you move the cursor near the right edge of the screen, the scroll bar gets pushed awaySearch
       * Load all data option to get search results
