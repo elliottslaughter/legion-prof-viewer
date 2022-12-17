@@ -94,7 +94,7 @@ struct Window {
 
 #[derive(Default, Deserialize, Serialize)]
 #[serde(default)] // deserialize missing fields as default value
-pub struct ProfViewer {
+pub struct ProfApp {
     window: Window,
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -524,6 +524,8 @@ impl Window {
         // Just set this on every frame for now
         self.settings.row_height = row_height;
 
+        ui.heading("Profile 0");
+
         ScrollArea::vertical()
             .auto_shrink([false; 2])
             .show_viewport(ui, |ui, viewport| {
@@ -599,9 +601,18 @@ impl Window {
             }
         });
     }
+
+    fn controls(&mut self, ui: &mut egui::Ui) {
+        const WIDGET_PADDING: f32 = 8.0;
+        ui.heading("Profile 0: Controls");
+        ui.add_space(WIDGET_PADDING);
+        self.node_selection(ui);
+        ui.add_space(WIDGET_PADDING);
+        self.expand_collapse(ui);
+    }
 }
 
-impl ProfViewer {
+impl ProfApp {
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // This is also where you can customized the look at feel of egui using
@@ -692,7 +703,7 @@ impl ProfViewer {
     }
 }
 
-impl eframe::App for ProfViewer {
+impl eframe::App for ProfApp {
     /// Called to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
@@ -728,16 +739,22 @@ impl eframe::App for ProfViewer {
         });
 
         egui::SidePanel::left("side_panel").show(ctx, |ui| {
-            ui.heading("Legion Prof");
-            ui.label("Welcome to the Legion Prof tech demo. This is NOT a working profiler, because the data here is completely fake. However, this is a testbed for designing features for a potential future profiler interface. Feel free to click around and check it out.");
-
-            ui.separator();
+            ui.heading("Legion Prof Tech Demo");
 
             const WIDGET_PADDING: f32 = 8.0;
             ui.add_space(WIDGET_PADDING);
-            window.node_selection(ui);
-            ui.add_space(WIDGET_PADDING);
-            window.expand_collapse(ui);
+
+            egui::Frame::group(ui.style()).show(ui, |ui| {
+                ui.set_width(ui.available_width()); // fill side panel
+                window.controls(ui);
+            });
+
+
+            egui::Frame::group(ui.style()).show(ui, |ui| {
+                ui.set_width(ui.available_width()); // fill side panel
+                ui.heading("Task Details");
+                ui.label("Click on a task to see it displayed here.");
+            });
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 ui.horizontal(|ui| {
