@@ -1,6 +1,7 @@
 use egui::{Align2, Color32, NumExt, Pos2, Rect, ScrollArea, Slider, Stroke, TextStyle, Vec2};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default, Deserialize, Serialize)]
@@ -91,14 +92,14 @@ struct Window {
     settings: Settings,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Default, Deserialize, Serialize)]
 #[serde(default)] // deserialize missing fields as default value
 pub struct ProfViewer {
     window: Window,
 
     #[cfg(not(target_arch = "wasm32"))]
     #[serde(skip)]
-    last_update: Instant,
+    last_update: Option<Instant>,
 }
 
 trait Entry {
@@ -600,16 +601,6 @@ impl Window {
     }
 }
 
-impl Default for ProfViewer {
-    fn default() -> Self {
-        Self {
-            window: Window::default(),
-            #[cfg(not(target_arch = "wasm32"))]
-            last_update: Instant::now(),
-        }
-    }
-}
-
 impl ProfViewer {
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
@@ -624,7 +615,15 @@ impl ProfViewer {
             Default::default()
         };
 
-        result.window.kinds = vec!["CPU".to_string(), "GPU".to_string(), "OMP".to_string(), "Py".to_string(), "Util".to_string(), "Chan".to_string(), "SysMem".to_string()];
+        result.window.kinds = vec![
+            "CPU".to_string(),
+            "GPU".to_string(),
+            "OMP".to_string(),
+            "Py".to_string(),
+            "Util".to_string(),
+            "Chan".to_string(),
+            "SysMem".to_string(),
+        ];
 
         let rng = &mut result.window.settings.rng;
         const NODES: i32 = 8192;
@@ -686,7 +685,7 @@ impl ProfViewer {
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            result.last_update = Instant::now();
+            result.last_update = Some(Instant::now());
         }
 
         result
@@ -711,8 +710,10 @@ impl eframe::App for ProfViewer {
         #[cfg(not(target_arch = "wasm32"))]
         {
             let now = Instant::now();
-            _fps = 1.0 / now.duration_since(*last_update).as_secs_f64();
-            *last_update = now;
+            if let Some(last) = last_update {
+                _fps = 1.0 / now.duration_since(*last).as_secs_f64();
+            }
+            *last_update = Some(now);
         }
 
         #[cfg(not(target_arch = "wasm32"))]
