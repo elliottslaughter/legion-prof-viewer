@@ -1,5 +1,23 @@
 Tech demo for potential future Legion Prof interface.
 
+### TODO
+
+- [x] Check nested viewport culling
+- [x] Slot items by row
+- [x] Row check for hover/click
+- [x] Better explanatory text
+- [x] Utilization plots
+- [x] Vertical cursor
+- [x] Node selection
+- [x] Expand all of a kind (cpu/gpu/etc)Rects on 1-row proc show up at top
+- [x] Stop hardcoding kindsDONE Multiple profiles
+- [ ] timestamps on the vertical cursor
+- [ ] Window pan/zoom
+- [ ] There is a bug when you move the cursor near the right edge of the screen, the scroll bar gets pushed awaySearch
+      * Load all data option to get search results
+- [ ] Task detail view
+
+
 ### Native
 
 Make sure you are using the latest version of stable rust by running `rustup update`.
