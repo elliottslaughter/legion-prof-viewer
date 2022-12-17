@@ -87,6 +87,7 @@ struct Window {
     panel: Panel<Panel<Panel<Slot>>>, // nodes -> kind -> proc/chan/mem
     min_time: Timestamp,
     max_time: Timestamp,
+    kinds: Vec<String>,
     settings: Settings,
 }
 
@@ -581,33 +582,19 @@ impl Window {
 
         ui.heading("Expand/Collapse");
         ui.label("Expand by kind:");
-        ui.horizontal(|ui| {
-            if ui.button("CPU").clicked() {
-                toggle_all("cpu", false);
-            }
-            if ui.button("GPU").clicked() {
-                toggle_all("gpu", false);
-            }
-            if ui.button("Util").clicked() {
-                toggle_all("util", false);
-            }
-            if ui.button("Chan").clicked() {
-                toggle_all("chan", false);
+        ui.horizontal_wrapped(|ui| {
+            for kind in &self.kinds {
+                if ui.button(kind).clicked() {
+                    toggle_all(kind.to_lowercase(), false);
+                }
             }
         });
         ui.label("Collapse by kind:");
-        ui.horizontal(|ui| {
-            if ui.button("CPU").clicked() {
-                toggle_all("cpu", true);
-            }
-            if ui.button("GPU").clicked() {
-                toggle_all("gpu", true);
-            }
-            if ui.button("Util").clicked() {
-                toggle_all("util", true);
-            }
-            if ui.button("Chan").clicked() {
-                toggle_all("chan", true);
+        ui.horizontal_wrapped(|ui| {
+            for kind in &self.kinds {
+                if ui.button(kind).clicked() {
+                    toggle_all(kind.to_lowercase(), true);
+                }
             }
         });
     }
@@ -637,6 +624,8 @@ impl ProfViewer {
             Default::default()
         };
 
+        result.window.kinds = vec!["CPU".to_string(), "GPU".to_string(), "OMP".to_string(), "Py".to_string(), "Util".to_string(), "Chan".to_string(), "SysMem".to_string()];
+
         let rng = &mut result.window.settings.rng;
         const NODES: i32 = 8192;
         const PROCS: i32 = 8;
@@ -644,8 +633,8 @@ impl ProfViewer {
         for node in 0..NODES {
             let mut kind_slots = Vec::new();
             let colors = &[Color32::BLUE, Color32::GREEN, Color32::RED, Color32::YELLOW];
-            for (i, kind) in ["CPU", "GPU", "Util", "Chan"].iter().enumerate() {
-                let color = colors[i];
+            for (i, kind) in result.window.kinds.iter().enumerate() {
+                let color = colors[i % colors.len()];
                 let mut proc_slots = Vec::new();
                 for proc in 0..PROCS {
                     let rows: u64 = rng.gen_range(0..64);
