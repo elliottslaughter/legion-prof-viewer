@@ -583,23 +583,6 @@ impl Window {
 
                 // Root panel has no label
                 self.panel.content(ui, rect, viewport, &mut self.config, cx);
-
-                // Draw vertical line through cursor
-                let response = ui.allocate_rect(ui.min_rect(), egui::Sense::hover());
-                if let Some(hover) = response.hover_pos() {
-                    let visuals = ui.style().interact_selectable(&response, false);
-
-                    const RADIUS: f32 = 12.0;
-                    let top = Pos2::new(hover.x, ui.min_rect().min.y);
-                    let mid_top =
-                        Pos2::new(hover.x, (hover.y - RADIUS).at_least(ui.min_rect().min.y));
-                    let mid_bottom =
-                        Pos2::new(hover.x, (hover.y + RADIUS).at_most(ui.min_rect().max.y));
-                    let bottom = Pos2::new(hover.x, ui.min_rect().max.y);
-                    ui.painter().line_segment([top, mid_top], visuals.fg_stroke);
-                    ui.painter()
-                        .line_segment([mid_bottom, bottom], visuals.fg_stroke);
-                }
             });
     }
 
@@ -751,6 +734,23 @@ impl ProfApp {
 
         result
     }
+
+    fn cursor(ui: &mut egui::Ui, _cx: &Context) {
+        // Draw vertical line through cursor
+        let response = ui.allocate_rect(ui.min_rect(), egui::Sense::hover());
+        if let Some(hover) = response.hover_pos() {
+            let visuals = ui.style().interact_selectable(&response, false);
+
+            const RADIUS: f32 = 12.0;
+            let top = Pos2::new(hover.x, ui.min_rect().min.y);
+            let mid_top = Pos2::new(hover.x, (hover.y - RADIUS).at_least(ui.min_rect().min.y));
+            let mid_bottom = Pos2::new(hover.x, (hover.y + RADIUS).at_most(ui.min_rect().max.y));
+            let bottom = Pos2::new(hover.x, ui.min_rect().max.y);
+            ui.painter().line_segment([top, mid_top], visuals.fg_stroke);
+            ui.painter()
+                .line_segment([mid_bottom, bottom], visuals.fg_stroke);
+        }
+    }
 }
 
 impl eframe::App for ProfApp {
@@ -871,6 +871,8 @@ impl eframe::App for ProfApp {
                     window.content(ui, cx);
                 }
             }
+
+            Self::cursor(ui, cx);
         });
     }
 }
