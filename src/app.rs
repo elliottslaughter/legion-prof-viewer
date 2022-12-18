@@ -311,8 +311,13 @@ impl Entry for Summary {
                 rect.lerp(Vec2::new(time - 0.05, 0.0)),
                 rect.lerp(Vec2::new(time + 0.05, 1.0)),
             );
-            let util_response = ui.allocate_rect(util_rect, egui::Sense::hover());
-            util_response.on_hover_text(format!("{:.0}% Utilization", util.util * 100.0));
+            // Hover methods force a delay, so show tooltip directly.
+            egui::containers::show_tooltip_for(
+                ui.ctx(),
+                ui.auto_id_with("utilization_tooltip"),
+                &util_rect,
+                |ui| ui.label(format!("{:.0}% Utilization", util.util * 100.0)),
+            );
         }
     }
 
@@ -434,15 +439,18 @@ impl Entry for Slot {
                     if row_hover && hover_pos.map_or(false, |h| item_rect.contains(h)) {
                         hover_pos = None;
 
-                        // Hack: create a new response for this rect specifically
-                        // so we can use the hover methods...
-                        // (Elliott: I assume this is more efficient than allocating
-                        // every single rect.)
-                        let item_response = ui.allocate_rect(item_rect, egui::Sense::hover());
-                        item_response.on_hover_text(format!(
-                            "Item: {} {} Row: {}",
-                            item.interval.start.0, item.interval.stop.0, row
-                        ));
+                        // Hover methods force a delay, so show tooltip directly.
+                        egui::containers::show_tooltip_for(
+                            ui.ctx(),
+                            ui.auto_id_with("task_tooltip"),
+                            &item_rect,
+                            |ui| {
+                                ui.label(format!(
+                                    "Item: {} {} Row: {}",
+                                    item.interval.start.0, item.interval.stop.0, row
+                                ))
+                            },
+                        );
                     }
                     ui.painter().rect(item_rect, 0.0, color, Stroke::NONE);
                 }
