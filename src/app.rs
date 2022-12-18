@@ -796,11 +796,11 @@ impl ProfApp {
             Pos2::new(slot_rect.max.x, ui_rect.max.y),
         );
 
-        // Draw vertical line through cursor
         let response = ui.allocate_rect(rect, egui::Sense::hover());
         if let Some(hover) = response.hover_pos() {
             let visuals = ui.style().interact_selectable(&response, false);
 
+            // Draw vertical line through cursor
             const RADIUS: f32 = 12.0;
             let top = Pos2::new(hover.x, ui.min_rect().min.y);
             let mid_top = Pos2::new(hover.x, (hover.y - RADIUS).at_least(ui.min_rect().min.y));
@@ -810,12 +810,31 @@ impl ProfApp {
             ui.painter()
                 .line_segment([mid_bottom, bottom], visuals.fg_stroke);
 
-            // FIXME: Elliott: Popup gets stacked under the existing
-            // popup instead of getting placed where I ask it to be.
+            // Show timestamp popup
 
+            const HOVER_PADDING: f32 = 8.0;
             let time = (hover.x - rect.left()) / (rect.width());
             let time = cx.view_interval.lerp(time);
-            ui.show_tooltip_at("timestamp_tooltip", Some(top), format!("t={} ns", time.0));
+
+            // Hack: This avoids an issue where popups displayed normally are
+            // forced to stack, even when an explicit position is
+            // requested. Instead we display the popup manually via black magic
+            let popup_rect = Rect::from_min_size(
+                Pos2::new(top.x + HOVER_PADDING, top.y),
+                Vec2::new(100.0, 100.0),
+            );
+            let mut popup_ui = egui::Ui::new(
+                ui.ctx().clone(),
+                ui.layer_id(),
+                ui.id(),
+                popup_rect,
+                popup_rect.expand(16.0),
+            );
+            egui::Frame::popup(ui.style()).show(&mut popup_ui, |ui| {
+                ui.label(format!("t={} ns", time.0));
+            });
+
+            // ui.show_tooltip_at("timestamp_tooltip", Some(top), format!("t={} ns", time.0));
         }
     }
 }
