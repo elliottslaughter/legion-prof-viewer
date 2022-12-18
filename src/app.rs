@@ -98,6 +98,8 @@ struct Window {
 struct Context {
     row_height: f32,
 
+    subheading_size: f32,
+
     // Visible time range
     window_start: Timestamp,
     window_stop: Timestamp,
@@ -601,8 +603,8 @@ impl Window {
             });
     }
 
-    fn node_selection(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Node Selection");
+    fn node_selection(&mut self, ui: &mut egui::Ui, cx: &Context) {
+        ui.subheading("Node Selection", cx);
         let total = self.panel.slots.len().saturating_sub(1) as u64;
         let min_node = &mut self.config.min_node;
         let max_node = &mut self.config.max_node;
@@ -616,7 +618,7 @@ impl Window {
         }
     }
 
-    fn expand_collapse(&mut self, ui: &mut egui::Ui) {
+    fn expand_collapse(&mut self, ui: &mut egui::Ui, cx: &Context) {
         let mut toggle_all = |label, toggle| {
             for node in &mut self.panel.slots {
                 for kind in &mut node.slots {
@@ -627,7 +629,7 @@ impl Window {
             }
         };
 
-        ui.heading("Expand/Collapse");
+        ui.subheading("Expand/Collapse", cx);
         ui.label("Expand by kind:");
         ui.horizontal_wrapped(|ui| {
             for kind in &self.kinds {
@@ -646,13 +648,13 @@ impl Window {
         });
     }
 
-    fn controls(&mut self, ui: &mut egui::Ui) {
+    fn controls(&mut self, ui: &mut egui::Ui, cx: &Context) {
         const WIDGET_PADDING: f32 = 8.0;
         ui.heading(format!("Profile {}: Controls", self.index));
         ui.add_space(WIDGET_PADDING);
-        self.node_selection(ui);
+        self.node_selection(ui, cx);
         ui.add_space(WIDGET_PADDING);
-        self.expand_collapse(ui);
+        self.expand_collapse(ui, cx);
     }
 
     fn generate(&mut self, cx: &mut Context) {
@@ -789,6 +791,11 @@ impl eframe::App for ProfApp {
         });
 
         egui::SidePanel::left("side_panel").show(ctx, |ui| {
+            let body = TextStyle::Body.resolve(ui.style()).size;
+            let heading = TextStyle::Heading.resolve(ui.style()).size;
+            // Just set this on every frame for now
+            cx.subheading_size = (heading + body) * 0.5;
+
             ui.heading("Legion Prof Tech Demo");
 
             const WIDGET_PADDING: f32 = 8.0;
@@ -797,7 +804,7 @@ impl eframe::App for ProfApp {
             for window in windows.iter_mut() {
                 egui::Frame::group(ui.style()).show(ui, |ui| {
                     ui.set_width(ui.available_width());
-                    window.controls(ui);
+                    window.controls(ui, cx);
                 });
             }
 
@@ -865,5 +872,17 @@ impl eframe::App for ProfApp {
                 }
             }
         });
+    }
+}
+
+trait UiExtra {
+    fn subheading(&mut self, text: impl Into<egui::RichText>, cx: &Context) -> egui::Response;
+}
+
+impl UiExtra for egui::Ui {
+    fn subheading(&mut self, text: impl Into<egui::RichText>, cx: &Context) -> egui::Response {
+        self.add(egui::Label::new(
+            text.into().heading().size(cx.subheading_size),
+        ))
     }
 }
