@@ -132,6 +132,11 @@ struct Context {
     // Visible time range
     view_interval: Interval,
 
+    // Hack: We need to track the screenspace rect where slot/summary
+    // data gets drawn. This gets used rendering the cursor, but we
+    // only know it when we render slots. So stash it here.
+    slot_rect: Option<Rect>,
+
     #[serde(skip)]
     rng: rand::rngs::ThreadRng,
 }
@@ -260,6 +265,8 @@ impl Entry for Summary {
         config: &mut Config,
         cx: &mut Context,
     ) {
+        cx.slot_rect = Some(rect); // Save slot rect for use later
+
         const TOOLTIP_RADIUS: f32 = 4.0;
         let response = ui.allocate_rect(rect, egui::Sense::hover());
         let hover_pos = response.hover_pos(); // where is the mouse hovering?
@@ -378,6 +385,8 @@ impl Entry for Slot {
         config: &mut Config,
         cx: &mut Context,
     ) {
+        cx.slot_rect = Some(rect); // Save slot rect for use later
+
         let response = ui.allocate_rect(rect, egui::Sense::hover());
         let mut hover_pos = response.hover_pos(); // where is the mouse hovering?
 
@@ -776,9 +785,19 @@ impl ProfApp {
         result
     }
 
-    fn cursor(ui: &mut egui::Ui, _cx: &Context) {
+    fn cursor(ui: &mut egui::Ui, cx: &Context) {
+        // Hack: the UI rect we have at this point is not where the
+        // timeline is being drawn. So fish out the coordinates we
+        // need to draw the correct rect.
+        let ui_rect = ui.min_rect();
+        let slot_rect = cx.slot_rect.unwrap();
+        let rect = Rect::from_min_max(
+            Pos2::new(slot_rect.min.x, ui_rect.min.y),
+            Pos2::new(slot_rect.max.x, ui_rect.max.y),
+        );
+
         // Draw vertical line through cursor
-        let response = ui.allocate_rect(ui.min_rect(), egui::Sense::hover());
+        let response = ui.allocate_rect(rect, egui::Sense::hover());
         if let Some(hover) = response.hover_pos() {
             let visuals = ui.style().interact_selectable(&response, false);
 
@@ -791,19 +810,12 @@ impl ProfApp {
             ui.painter()
                 .line_segment([mid_bottom, bottom], visuals.fg_stroke);
 
-            // FIXME: Elliott: This value is wrong because it's being
-            // computed in the wrong frame of reference.
+            // FIXME: Elliott: Popup gets stacked under the existing
+            // popup instead of getting placed where I ask it to be.
 
-            // Also, it gets stacked under the existing popup instead
-            // of getting placed where I ask it to be.
-
-            // let time = (hover.x - ui.min_rect().left() - (60.0 + 4.0)*3.0) / (ui.min_rect().width());
-            // let time = cx.view_interval.lerp(time);
-            // ui.show_tooltip_at(
-            //     "timestamp_tooltip",
-            //     Some(top),
-            //     format!("t={} ns", time.0),
-            // );
+            let time = (hover.x - rect.left()) / (rect.width());
+            let time = cx.view_interval.lerp(time);
+            ui.show_tooltip_at("timestamp_tooltip", Some(top), format!("t={} ns", time.0));
         }
     }
 }
@@ -984,8 +996,13 @@ impl UiExtra for egui::Ui {
         suggested_position: Option<Pos2>,
         text: impl Into<egui::WidgetText>,
     ) {
-        egui::containers::show_tooltip_at(self.ctx(), self.auto_id_with(id_source), suggested_position, |ui| {
-            ui.add(egui::Label::new(text));
-        });
+        egui::containers::show_tooltip_at(
+            self.ctx(),
+            self.auto_id_with(id_source),
+            suggested_position,
+            |ui| {
+                ui.add(egui::Label::new(text));
+            },
+        );
     }
 }
