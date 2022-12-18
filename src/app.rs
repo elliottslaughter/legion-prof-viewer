@@ -71,7 +71,7 @@ struct Item {
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Default, Deserialize, Serialize)]
 struct UtilPoint {
-    time: f32,
+    time: Timestamp,
     util: f32,
 }
 
@@ -214,7 +214,7 @@ impl Summary {
         max_level: i32,
         cx: &mut Context,
     ) {
-        let time = (first.time + last.time) * 0.5;
+        let time = Timestamp((first.time.0 + last.time.0) / 2);
         let util = (first.util + last.util) * 0.5;
         let diff = (cx.rng.gen::<f32>() - 0.5) / 1.2_f32.powi(max_level - level);
         let util = (util + diff).at_least(0.0).at_most(1.0);
@@ -228,14 +228,14 @@ impl Summary {
         }
     }
 
-    fn generate(&mut self, cx: &mut Context) {
+    fn generate(&mut self, config: &Config, cx: &mut Context) {
         const LEVELS: i32 = 8;
         let first = UtilPoint {
-            time: 0.0,
+            time: config.interval.start,
             util: cx.rng.gen(),
         };
         let last = UtilPoint {
-            time: 1.0,
+            time: config.interval.stop,
             util: cx.rng.gen(),
         };
         self.utilization.push(first);
@@ -257,7 +257,7 @@ impl Entry for Summary {
         ui: &mut egui::Ui,
         rect: Rect,
         _viewport: Rect,
-        _config: &mut Config,
+        config: &mut Config,
         cx: &mut Context,
     ) {
         const TOOLTIP_RADIUS: f32 = 4.0;
@@ -265,7 +265,7 @@ impl Entry for Summary {
         let hover_pos = response.hover_pos(); // where is the mouse hovering?
 
         if self.utilization.is_empty() {
-            self.generate(cx);
+            self.generate(config, cx);
         }
 
         let style = ui.style();
@@ -281,7 +281,8 @@ impl Entry for Summary {
         let mut last_last_point: Option<Pos2> = None;
         for util in &self.utilization {
             // Convert utilization to screen space
-            let point = rect.lerp(Vec2::new(util.time, 1.0 - util.util));
+            let time = cx.view_interval.unlerp(util.time);
+            let point = rect.lerp(Vec2::new(time, 1.0 - util.util));
             if let Some(last) = last_point {
                 ui.painter().line_segment([last, point], stroke);
             }
@@ -305,9 +306,10 @@ impl Entry for Summary {
         }
 
         if let Some(util) = hover_util {
+            let time = cx.view_interval.unlerp(util.time);
             let util_rect = Rect::from_min_max(
-                rect.lerp(Vec2::new(util.time - 0.05, 0.0)),
-                rect.lerp(Vec2::new(util.time + 0.05, 1.0)),
+                rect.lerp(Vec2::new(time - 0.05, 0.0)),
+                rect.lerp(Vec2::new(time + 0.05, 1.0)),
             );
             let util_response = ui.allocate_rect(util_rect, egui::Sense::hover());
             util_response.on_hover_text(format!("{:.0}% Utilization", util.util * 100.0));
