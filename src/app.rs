@@ -40,8 +40,8 @@ struct Timestamp(u64 /* ns */);
 // DO NOT derive (de)serialize, we will never serialize this
 struct Item {
     _row: u64,
-    start: f32,
-    stop: f32,
+    start: Timestamp,
+    stop: Timestamp,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Default, Deserialize, Serialize)]
@@ -81,14 +81,16 @@ struct Config {
     // Node selection controls
     min_node: u64,
     max_node: u64,
+
+    // This is just for the local profile
+    min_time: Timestamp,
+    max_time: Timestamp,
 }
 
 #[derive(Default, Deserialize, Serialize)]
 struct Window {
     #[serde(skip)]
     panel: Panel<Panel<Panel<Slot>>>, // nodes -> kind -> proc/chan/mem
-    min_time: Timestamp,
-    max_time: Timestamp,
     index: u64,
     kinds: Vec<String>,
     config: Config,
@@ -99,6 +101,10 @@ struct Context {
     row_height: f32,
 
     subheading_size: f32,
+
+    // This is across all profiles
+    min_time_all: Timestamp,
+    max_time_all: Timestamp,
 
     // Visible time range
     window_start: Timestamp,
@@ -310,14 +316,17 @@ impl Slot {
         }
     }
 
-    fn generate(&mut self) {
+    fn generate(&mut self, config: &Config) {
+        let duration = (config.max_time.0 - config.min_time.0) as f64;
+        let interpolate = |t| Timestamp((t * duration) as u64 + config.min_time.0);
+
         let mut items = Vec::new();
         for row in 0..self.max_rows {
             let mut row_items = Vec::new();
             const N: u64 = 1000;
             for i in 0..N {
-                let start = (i as f32 + 0.05) / (N as f32);
-                let stop = (i as f32 + 0.95) / (N as f32);
+                let start = interpolate((i as f64 + 0.05) / (N as f64));
+                let stop = interpolate((i as f64 + 0.95) / (N as f64));
                 row_items.push(Item {
                     _row: row,
                     start,
@@ -343,21 +352,24 @@ impl Entry for Slot {
         ui: &mut egui::Ui,
         rect: Rect,
         viewport: Rect,
-        _config: &mut Config,
-        _cx: &mut Context,
+        config: &mut Config,
+        cx: &mut Context,
     ) {
         let response = ui.allocate_rect(rect, egui::Sense::hover());
         let mut hover_pos = response.hover_pos(); // where is the mouse hovering?
 
         if self.expanded {
             if self.items.is_empty() {
-                self.generate();
+                self.generate(config);
             }
 
             let style = ui.style();
             let visuals = style.interact_selectable(&response, false);
             ui.painter()
                 .rect(rect, 0.0, visuals.bg_fill, visuals.bg_stroke);
+
+            let duration = (cx.max_time_all.0 - cx.min_time_all.0) as f32;
+            let interpolate = |t| (t - cx.min_time_all.0) as f32 / duration;
 
             let rows = self.rows();
             let mut i = 0;
@@ -386,8 +398,10 @@ impl Entry for Slot {
 
                 // Now handle the items
                 for item in row_items {
-                    let min = rect.lerp(Vec2::new(item.start, (irow as f32 + 0.05) / rows as f32));
-                    let max = rect.lerp(Vec2::new(item.stop, (irow as f32 + 0.95) / rows as f32));
+                    let start = interpolate(item.start.0);
+                    let stop = interpolate(item.stop.0);
+                    let min = rect.lerp(Vec2::new(start, (irow as f32 + 0.05) / rows as f32));
+                    let max = rect.lerp(Vec2::new(stop, (irow as f32 + 0.95) / rows as f32));
                     let color = match i % 7 {
                         0 => Color32::BLUE,
                         1 => Color32::RED,
@@ -410,7 +424,7 @@ impl Entry for Slot {
                         let item_response = ui.allocate_rect(item_rect, egui::Sense::hover());
                         item_response.on_hover_text(format!(
                             "Item: {} {} Row: {}",
-                            item.start, item.stop, row
+                            item.start.0, item.stop.0, row
                         ));
                     }
                     ui.painter().rect(item_rect, 0.0, color, Stroke::NONE);
@@ -726,6 +740,11 @@ impl ProfApp {
 
         result.windows.clear();
         result.windows.push(Window::default());
+        let window = result.windows.last_mut().unwrap();
+        // Need to at least pick the time bounds up front
+        window.config.min_time = Timestamp(0);
+        window.config.max_time = Timestamp(result.cx.rng.gen_range(1_000_000..2_000_000));
+        result.cx.max_time_all = window.config.max_time;
 
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -814,7 +833,12 @@ impl eframe::App for ProfApp {
                     index = last.index + 1;
                 }
                 windows.push(Window::default());
-                windows.last_mut().unwrap().index = index;
+                let window = windows.last_mut().unwrap();
+                window.index = index;
+                // Need to at least pick the time bounds up front
+                window.config.min_time = Timestamp(0);
+                window.config.max_time = Timestamp(cx.rng.gen_range(1_000_000..2_000_000));
+                cx.max_time_all = cx.max_time_all.max(window.config.max_time);
             }
 
             egui::Frame::group(ui.style()).show(ui, |ui| {
