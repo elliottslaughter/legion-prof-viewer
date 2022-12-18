@@ -311,12 +311,10 @@ impl Entry for Summary {
                 rect.lerp(Vec2::new(time - 0.05, 0.0)),
                 rect.lerp(Vec2::new(time + 0.05, 1.0)),
             );
-            // Hover methods force a delay, so show tooltip directly.
-            egui::containers::show_tooltip_for(
-                ui.ctx(),
-                ui.auto_id_with("utilization_tooltip"),
+            ui.show_tooltip(
+                "utilization_tooltip",
                 &util_rect,
-                |ui| ui.label(format!("{:.0}% Utilization", util.util * 100.0)),
+                format!("{:.0}% Utilization", util.util * 100.0),
             );
         }
     }
@@ -439,17 +437,13 @@ impl Entry for Slot {
                     if row_hover && hover_pos.map_or(false, |h| item_rect.contains(h)) {
                         hover_pos = None;
 
-                        // Hover methods force a delay, so show tooltip directly.
-                        egui::containers::show_tooltip_for(
-                            ui.ctx(),
-                            ui.auto_id_with("task_tooltip"),
+                        ui.show_tooltip(
+                            "task_tooltip",
                             &item_rect,
-                            |ui| {
-                                ui.label(format!(
-                                    "Item: {} {} Row: {}",
-                                    item.interval.start.0, item.interval.stop.0, row
-                                ))
-                            },
+                            format!(
+                                "Item: {} {} Row: {}",
+                                item.interval.start.0, item.interval.stop.0, row
+                            ),
                         );
                     }
                     ui.painter().rect(item_rect, 0.0, color, Stroke::NONE);
@@ -934,6 +928,12 @@ impl eframe::App for ProfApp {
 
 trait UiExtra {
     fn subheading(&mut self, text: impl Into<egui::RichText>, cx: &Context) -> egui::Response;
+    fn show_tooltip(
+        &mut self,
+        id_source: impl core::hash::Hash,
+        rect: &Rect,
+        text: impl Into<egui::WidgetText>,
+    );
 }
 
 impl UiExtra for egui::Ui {
@@ -941,5 +941,22 @@ impl UiExtra for egui::Ui {
         self.add(egui::Label::new(
             text.into().heading().size(cx.subheading_size),
         ))
+    }
+
+    /// This is a method for showing a fast, very responsive
+    /// tooltip. The standard hover methods force a delay (presumably
+    /// to confirm the mouse has stopped), this bypasses that. Best
+    /// used in situations where the user might quickly skim over the
+    /// content (e.g., utilization plots).
+    fn show_tooltip(
+        &mut self,
+        id_source: impl core::hash::Hash,
+        rect: &Rect,
+        text: impl Into<egui::WidgetText>,
+    ) {
+        // Hover methods force a delay, so show tooltip directly.
+        egui::containers::show_tooltip_for(self.ctx(), self.auto_id_with(id_source), rect, |ui| {
+            ui.add(egui::Label::new(text));
+        });
     }
 }
