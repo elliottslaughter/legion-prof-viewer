@@ -7,6 +7,32 @@ use std::time::Instant;
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default, Deserialize, Serialize)]
 struct Timestamp(u64 /* ns */);
 
+#[derive(Debug, Copy, Clone, Default, Deserialize, Serialize)]
+struct Interval {
+    start: Timestamp,
+    stop: Timestamp,
+}
+
+impl Interval {
+    fn new(start: Timestamp, stop: Timestamp) -> Self {
+        Self { start, stop }
+    }
+    fn union(self, other: Interval) -> Self {
+        Self {
+            start: Timestamp(self.start.0.min(other.start.0)),
+            stop: Timestamp(self.stop.0.max(other.stop.0)),
+        }
+    }
+    // Convert a timestamp into [0,1] relative space
+    fn unlerp(self, time: Timestamp) -> f32 {
+        (time.0 - self.start.0) as f32 / ((self.stop.0 - self.start.0) as f32)
+    }
+    // Convert [0,1] relative space into a timestamp
+    fn lerp(self, value: f32) -> Timestamp {
+        Timestamp((value * ((self.stop.0 - self.start.0) as f32)) as u64 + self.start.0)
+    }
+}
+
 /// Overview:
 ///   ProfApp -> Context, Window *
 ///   Window -> Config, Panel
@@ -40,8 +66,7 @@ struct Timestamp(u64 /* ns */);
 // DO NOT derive (de)serialize, we will never serialize this
 struct Item {
     _row: u64,
-    start: Timestamp,
-    stop: Timestamp,
+    interval: Interval,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Default, Deserialize, Serialize)]
@@ -83,8 +108,7 @@ struct Config {
     max_node: u64,
 
     // This is just for the local profile
-    min_time: Timestamp,
-    max_time: Timestamp,
+    interval: Interval,
 }
 
 #[derive(Default, Deserialize, Serialize)]
@@ -103,12 +127,10 @@ struct Context {
     subheading_size: f32,
 
     // This is across all profiles
-    min_time_all: Timestamp,
-    max_time_all: Timestamp,
+    total_interval: Interval,
 
     // Visible time range
-    window_start: Timestamp,
-    window_stop: Timestamp,
+    view_interval: Interval,
 
     #[serde(skip)]
     rng: rand::rngs::ThreadRng,
@@ -317,20 +339,16 @@ impl Slot {
     }
 
     fn generate(&mut self, config: &Config) {
-        let duration = (config.max_time.0 - config.min_time.0) as f64;
-        let interpolate = |t| Timestamp((t * duration) as u64 + config.min_time.0);
-
         let mut items = Vec::new();
         for row in 0..self.max_rows {
             let mut row_items = Vec::new();
             const N: u64 = 1000;
             for i in 0..N {
-                let start = interpolate((i as f64 + 0.05) / (N as f64));
-                let stop = interpolate((i as f64 + 0.95) / (N as f64));
+                let start = config.interval.lerp((i as f32 + 0.05) / (N as f32));
+                let stop = config.interval.lerp((i as f32 + 0.95) / (N as f32));
                 row_items.push(Item {
                     _row: row,
-                    start,
-                    stop,
+                    interval: Interval::new(start, stop),
                 });
             }
             items.push(row_items);
@@ -368,9 +386,6 @@ impl Entry for Slot {
             ui.painter()
                 .rect(rect, 0.0, visuals.bg_fill, visuals.bg_stroke);
 
-            let duration = (cx.max_time_all.0 - cx.min_time_all.0) as f32;
-            let interpolate = |t| (t - cx.min_time_all.0) as f32 / duration;
-
             let rows = self.rows();
             let mut i = 0;
             for (row, row_items) in self.items.iter().enumerate() {
@@ -398,8 +413,8 @@ impl Entry for Slot {
 
                 // Now handle the items
                 for item in row_items {
-                    let start = interpolate(item.start.0);
-                    let stop = interpolate(item.stop.0);
+                    let start = cx.view_interval.unlerp(item.interval.start);
+                    let stop = cx.view_interval.unlerp(item.interval.stop);
                     let min = rect.lerp(Vec2::new(start, (irow as f32 + 0.05) / rows as f32));
                     let max = rect.lerp(Vec2::new(stop, (irow as f32 + 0.95) / rows as f32));
                     let color = match i % 7 {
@@ -424,7 +439,7 @@ impl Entry for Slot {
                         let item_response = ui.allocate_rect(item_rect, egui::Sense::hover());
                         item_response.on_hover_text(format!(
                             "Item: {} {} Row: {}",
-                            item.start.0, item.stop.0, row
+                            item.interval.start.0, item.interval.stop.0, row
                         ));
                     }
                     ui.painter().rect(item_rect, 0.0, color, Stroke::NONE);
@@ -742,9 +757,12 @@ impl ProfApp {
         result.windows.push(Window::default());
         let window = result.windows.last_mut().unwrap();
         // Need to at least pick the time bounds up front
-        window.config.min_time = Timestamp(0);
-        window.config.max_time = Timestamp(result.cx.rng.gen_range(1_000_000..2_000_000));
-        result.cx.max_time_all = window.config.max_time;
+        window.config.interval = Interval::new(
+            Timestamp(0),
+            Timestamp(result.cx.rng.gen_range(1_000_000..2_000_000)),
+        );
+        result.cx.total_interval = window.config.interval;
+        result.cx.view_interval = result.cx.total_interval;
 
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -836,9 +854,12 @@ impl eframe::App for ProfApp {
                 let window = windows.last_mut().unwrap();
                 window.index = index;
                 // Need to at least pick the time bounds up front
-                window.config.min_time = Timestamp(0);
-                window.config.max_time = Timestamp(cx.rng.gen_range(1_000_000..2_000_000));
-                cx.max_time_all = cx.max_time_all.max(window.config.max_time);
+                window.config.interval = Interval::new(
+                    Timestamp(0),
+                    Timestamp(cx.rng.gen_range(1_000_000..2_000_000)),
+                );
+                cx.total_interval = cx.total_interval.union(window.config.interval);
+                cx.view_interval = cx.total_interval;
             }
 
             egui::Frame::group(ui.style()).show(ui, |ui| {
