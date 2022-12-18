@@ -790,6 +790,20 @@ impl ProfApp {
             ui.painter().line_segment([top, mid_top], visuals.fg_stroke);
             ui.painter()
                 .line_segment([mid_bottom, bottom], visuals.fg_stroke);
+
+            // FIXME: Elliott: This value is wrong because it's being
+            // computed in the wrong frame of reference.
+
+            // Also, it gets stacked under the existing popup instead
+            // of getting placed where I ask it to be.
+
+            // let time = (hover.x - ui.min_rect().left() - (60.0 + 4.0)*3.0) / (ui.min_rect().width());
+            // let time = cx.view_interval.lerp(time);
+            // ui.show_tooltip_at(
+            //     "timestamp_tooltip",
+            //     Some(top),
+            //     format!("t={} ns", time.0),
+            // );
         }
     }
 }
@@ -934,6 +948,12 @@ trait UiExtra {
         rect: &Rect,
         text: impl Into<egui::WidgetText>,
     );
+    fn show_tooltip_at(
+        &mut self,
+        id_source: impl core::hash::Hash,
+        suggested_position: Option<Pos2>,
+        text: impl Into<egui::WidgetText>,
+    );
 }
 
 impl UiExtra for egui::Ui {
@@ -954,8 +974,17 @@ impl UiExtra for egui::Ui {
         rect: &Rect,
         text: impl Into<egui::WidgetText>,
     ) {
-        // Hover methods force a delay, so show tooltip directly.
         egui::containers::show_tooltip_for(self.ctx(), self.auto_id_with(id_source), rect, |ui| {
+            ui.add(egui::Label::new(text));
+        });
+    }
+    fn show_tooltip_at(
+        &mut self,
+        id_source: impl core::hash::Hash,
+        suggested_position: Option<Pos2>,
+        text: impl Into<egui::WidgetText>,
+    ) {
+        egui::containers::show_tooltip_at(self.ctx(), self.auto_id_with(id_source), suggested_position, |ui| {
             ui.add(egui::Label::new(text));
         });
     }
