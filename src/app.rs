@@ -1,16 +1,98 @@
 use egui::{Align2, Color32, NumExt, Pos2, Rect, ScrollArea, Slider, Stroke, TextStyle, Vec2};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default, Deserialize, Serialize)]
 struct Timestamp(u64 /* ns */);
 
+impl fmt::Display for Timestamp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Time is stored in nanoseconds. But display in larger units if possible.
+        let ns = self.0;
+        let ns_per_us = 1_000;
+        let ns_per_ms = 1_000_000;
+        let ns_per_s = 1_000_000_000;
+        let divisor;
+        let remainder_divisor;
+        let mut unit_name = "ns";
+        if ns >= ns_per_s {
+            divisor = ns_per_s;
+            remainder_divisor = divisor / 1_000;
+            unit_name = "s";
+        } else if ns >= ns_per_ms {
+            divisor = ns_per_ms;
+            remainder_divisor = divisor / 1_000;
+            unit_name = "ms";
+        } else if ns >= ns_per_us {
+            divisor = ns_per_us;
+            remainder_divisor = divisor / 1_000;
+            unit_name = "us";
+        } else {
+            return write!(f, "{} {}", ns, unit_name);
+        }
+        let units = ns / divisor;
+        let remainder = (ns % divisor) / remainder_divisor;
+        write!(f, "{}.{:0>3} {}", units, remainder, unit_name)
+    }
+}
+
 #[derive(Debug, Copy, Clone, Default, Deserialize, Serialize)]
 struct Interval {
     start: Timestamp,
     stop: Timestamp,
+}
+
+impl fmt::Display for Interval {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Time is stored in nanoseconds. But display in larger units if possible.
+        let start_ns = self.start.0;
+        let stop_ns = self.stop.0;
+        let ns_per_us = 1_000;
+        let ns_per_ms = 1_000_000;
+        let ns_per_s = 1_000_000_000;
+        let divisor;
+        let remainder_divisor;
+        let mut unit_name = "ns";
+        if stop_ns >= ns_per_s {
+            divisor = ns_per_s;
+            remainder_divisor = divisor / 1_000;
+            unit_name = "s";
+        } else if stop_ns >= ns_per_ms {
+            divisor = ns_per_ms;
+            remainder_divisor = divisor / 1_000;
+            unit_name = "ms";
+        } else if stop_ns >= ns_per_us {
+            divisor = ns_per_us;
+            remainder_divisor = divisor / 1_000;
+            unit_name = "us";
+        } else {
+            return write!(
+                f,
+                "from {} to {} {} (duration: {})",
+                start_ns,
+                stop_ns,
+                unit_name,
+                Timestamp(stop_ns - start_ns)
+            );
+        }
+        let start_units = start_ns / divisor;
+        let start_remainder = (start_ns % divisor) / remainder_divisor;
+        let stop_units = stop_ns / divisor;
+        let stop_remainder = (stop_ns % divisor) / remainder_divisor;
+        write!(
+            f,
+            "from {}.{:0>3} to {}.{:0>3} {} (duration: {})",
+            start_units,
+            start_remainder,
+            stop_units,
+            stop_remainder,
+            unit_name,
+            Timestamp(stop_ns - start_ns)
+        )
+    }
 }
 
 impl Interval {
@@ -449,10 +531,7 @@ impl Entry for Slot {
                         ui.show_tooltip(
                             "task_tooltip",
                             &item_rect,
-                            format!(
-                                "Item: {} {} Row: {}",
-                                item.interval.start.0, item.interval.stop.0, row
-                            ),
+                            format!("Item: {} Row: {}", item.interval, row),
                         );
                     }
                     ui.painter().rect(item_rect, 0.0, color, Stroke::NONE);
@@ -831,7 +910,7 @@ impl ProfApp {
                 popup_rect.expand(16.0),
             );
             egui::Frame::popup(ui.style()).show(&mut popup_ui, |ui| {
-                ui.label(format!("t={} ns", time.0));
+                ui.label(format!("t={}", time));
             });
 
             // ui.show_tooltip_at("timestamp_tooltip", Some(top), format!("t={} ns", time.0));
