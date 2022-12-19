@@ -898,10 +898,16 @@ impl ProfApp {
             // Hack: This avoids an issue where popups displayed normally are
             // forced to stack, even when an explicit position is
             // requested. Instead we display the popup manually via black magic
-            let popup_rect = Rect::from_min_size(
+            let mut popup_rect = Rect::from_min_size(
                 Pos2::new(top.x + HOVER_PADDING, top.y),
-                Vec2::new(100.0, 100.0),
+                Vec2::new(90.0, 100.0),
             );
+            // This is a hack to keep the time viewer on the screen when we
+            // approach the right edge.
+            if popup_rect.right() > ui.min_rect().right() {
+                popup_rect = popup_rect
+                    .translate(Vec2::new(ui.min_rect().right() - popup_rect.right(), 0.0));
+            }
             let mut popup_ui = egui::Ui::new(
                 ui.ctx().clone(),
                 ui.layer_id(),
@@ -913,7 +919,7 @@ impl ProfApp {
                 ui.label(format!("t={}", time));
             });
 
-            // ui.show_tooltip_at("timestamp_tooltip", Some(top), format!("t={} ns", time.0));
+            // ui.show_tooltip_at("timestamp_tooltip", Some(top), format!("t={}", time));
         }
     }
 }
