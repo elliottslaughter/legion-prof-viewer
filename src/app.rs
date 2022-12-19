@@ -214,6 +214,8 @@ struct Context {
     // Visible time range
     view_interval: Interval,
 
+    drag_origin: Option<Pos2>,
+
     // Hack: We need to track the screenspace rect where slot/summary
     // data gets drawn. This gets used rendering the cursor, but we
     // only know it when we render slots. So stash it here.
@@ -864,7 +866,7 @@ impl ProfApp {
         result
     }
 
-    fn cursor(ui: &mut egui::Ui, cx: &Context) {
+    fn cursor(ui: &mut egui::Ui, cx: &mut Context) {
         // Hack: the UI rect we have at this point is not where the
         // timeline is being drawn. So fish out the coordinates we
         // need to draw the correct rect.
@@ -875,7 +877,47 @@ impl ProfApp {
             Pos2::new(slot_rect.max.x, ui_rect.max.y),
         );
 
-        let response = ui.allocate_rect(rect, egui::Sense::hover());
+        let response = ui.allocate_rect(rect, egui::Sense::drag());
+
+        // Handle drag detection
+        let mut drag_interval = None;
+
+        let is_active_drag = response.dragged_by(egui::PointerButton::Primary);
+        if is_active_drag && response.drag_started() {
+            // On the beginning of a drag, save our position so we can
+            // calculate the delta
+            cx.drag_origin = response.interact_pointer_pos();
+        }
+
+        if let Some(origin) = cx.drag_origin {
+            // We're in a drag, calculate the drag inetrval
+            let current = response.interact_pointer_pos().unwrap();
+            let min = origin.x.min(current.x);
+            let max = origin.x.max(current.x);
+
+            let start = (min - rect.left()) / rect.width();
+            let start = cx.view_interval.lerp(start);
+            let stop = (max - rect.left()) / rect.width();
+            let stop = cx.view_interval.lerp(stop);
+
+            let interval = Interval::new(start, stop);
+
+            if is_active_drag {
+                // Still in drag, draw a rectangle to show the dragged region
+                let drag_rect =
+                    Rect::from_min_max(Pos2::new(min, rect.min.y), Pos2::new(max, rect.max.y));
+                let color = Color32::GRAY.linear_multiply(0.2);
+                ui.painter().rect(drag_rect, 0.0, color, Stroke::NONE);
+
+                drag_interval = Some(interval);
+            } else if response.drag_released() {
+                cx.view_interval = interval;
+
+                cx.drag_origin = None;
+            }
+        }
+
+        // Handle hover detection
         if let Some(hover) = response.hover_pos() {
             let visuals = ui.style().interact_selectable(&response, false);
 
@@ -892,15 +934,16 @@ impl ProfApp {
             // Show timestamp popup
 
             const HOVER_PADDING: f32 = 8.0;
-            let time = (hover.x - rect.left()) / (rect.width());
+            let time = (hover.x - rect.left()) / rect.width();
             let time = cx.view_interval.lerp(time);
 
             // Hack: This avoids an issue where popups displayed normally are
             // forced to stack, even when an explicit position is
             // requested. Instead we display the popup manually via black magic
+            let popup_size = if drag_interval.is_some() { 300.0 } else { 90.0 };
             let mut popup_rect = Rect::from_min_size(
                 Pos2::new(top.x + HOVER_PADDING, top.y),
-                Vec2::new(90.0, 100.0),
+                Vec2::new(popup_size, 100.0),
             );
             // This is a hack to keep the time viewer on the screen when we
             // approach the right edge.
@@ -916,7 +959,11 @@ impl ProfApp {
                 popup_rect.expand(16.0),
             );
             egui::Frame::popup(ui.style()).show(&mut popup_ui, |ui| {
-                ui.label(format!("t={}", time));
+                if let Some(drag) = drag_interval {
+                    ui.label(format!("{}", drag));
+                } else {
+                    ui.label(format!("t={}", time));
+                }
             });
 
             // ui.show_tooltip_at("timestamp_tooltip", Some(top), format!("t={}", time));
@@ -993,6 +1040,10 @@ impl eframe::App for ProfApp {
                     Timestamp(cx.rng.gen_range(1_000_000..2_000_000)),
                 );
                 cx.total_interval = cx.total_interval.union(window.config.interval);
+                cx.view_interval = cx.total_interval;
+            }
+
+            if ui.button("Reset View Interval").clicked() {
                 cx.view_interval = cx.total_interval;
             }
 
