@@ -1,122 +1,11 @@
 use egui::{Align2, Color32, NumExt, Pos2, Rect, ScrollArea, Slider, Stroke, TextStyle, Vec2};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::fmt;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default, Deserialize, Serialize)]
-struct Timestamp(i64 /* ns */);
-
-impl fmt::Display for Timestamp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Time is stored in nanoseconds. But display in larger units if possible.
-        let ns = self.0;
-        let ns_per_us = 1_000;
-        let ns_per_ms = 1_000_000;
-        let ns_per_s = 1_000_000_000;
-        let divisor;
-        let remainder_divisor;
-        let mut unit_name = "ns";
-        if ns >= ns_per_s {
-            divisor = ns_per_s;
-            remainder_divisor = divisor / 1_000;
-            unit_name = "s";
-        } else if ns >= ns_per_ms {
-            divisor = ns_per_ms;
-            remainder_divisor = divisor / 1_000;
-            unit_name = "ms";
-        } else if ns >= ns_per_us {
-            divisor = ns_per_us;
-            remainder_divisor = divisor / 1_000;
-            unit_name = "us";
-        } else {
-            return write!(f, "{} {}", ns, unit_name);
-        }
-        let units = ns / divisor;
-        let remainder = (ns % divisor) / remainder_divisor;
-        write!(f, "{}.{:0>3} {}", units, remainder, unit_name)
-    }
-}
-
-#[derive(Debug, Copy, Clone, Default, Deserialize, Serialize)]
-struct Interval {
-    start: Timestamp,
-    stop: Timestamp,
-}
-
-impl fmt::Display for Interval {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Time is stored in nanoseconds. But display in larger units if possible.
-        let start_ns = self.start.0;
-        let stop_ns = self.stop.0;
-        let ns_per_us = 1_000;
-        let ns_per_ms = 1_000_000;
-        let ns_per_s = 1_000_000_000;
-        let divisor;
-        let remainder_divisor;
-        let mut unit_name = "ns";
-        if stop_ns >= ns_per_s {
-            divisor = ns_per_s;
-            remainder_divisor = divisor / 1_000;
-            unit_name = "s";
-        } else if stop_ns >= ns_per_ms {
-            divisor = ns_per_ms;
-            remainder_divisor = divisor / 1_000;
-            unit_name = "ms";
-        } else if stop_ns >= ns_per_us {
-            divisor = ns_per_us;
-            remainder_divisor = divisor / 1_000;
-            unit_name = "us";
-        } else {
-            return write!(
-                f,
-                "from {} to {} {} (duration: {})",
-                start_ns,
-                stop_ns,
-                unit_name,
-                Timestamp(stop_ns - start_ns)
-            );
-        }
-        let start_units = start_ns / divisor;
-        let start_remainder = (start_ns % divisor) / remainder_divisor;
-        let stop_units = stop_ns / divisor;
-        let stop_remainder = (stop_ns % divisor) / remainder_divisor;
-        write!(
-            f,
-            "from {}.{:0>3} to {}.{:0>3} {} (duration: {})",
-            start_units,
-            start_remainder,
-            stop_units,
-            stop_remainder,
-            unit_name,
-            Timestamp(stop_ns - start_ns)
-        )
-    }
-}
-
-impl Interval {
-    fn new(start: Timestamp, stop: Timestamp) -> Self {
-        Self { start, stop }
-    }
-    fn union(self, other: Interval) -> Self {
-        Self {
-            start: Timestamp(self.start.0.min(other.start.0)),
-            stop: Timestamp(self.stop.0.max(other.stop.0)),
-        }
-    }
-    // Convert a timestamp into [0,1] relative space
-    fn unlerp(self, time: Timestamp) -> f32 {
-        (time.0 - self.start.0) as f32 / ((self.stop.0 - self.start.0) as f32)
-    }
-    // Convert [0,1] relative space into a timestamp
-    fn lerp(self, value: f32) -> Timestamp {
-        Timestamp((value * ((self.stop.0 - self.start.0) as f32)).round() as i64 + self.start.0)
-    }
-    fn has_intersection(self, other: Interval) -> bool {
-        !(other.stop < self.start || other.start > self.stop)
-    }
-}
+use crate::data::Item;
+use crate::timestamp::{Interval, Timestamp};
 
 /// Overview:
 ///   ProfApp -> Context, Window *
@@ -147,13 +36,6 @@ impl Interval {
 /// Slot:
 ///   * One Slot for each processor, channel, memory
 ///   * Viewer widget for items
-
-// DO NOT derive (de)serialize, we will never serialize this
-struct Item {
-    _row: u64,
-    interval: Interval,
-    color: Color32,
-}
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Default, Deserialize, Serialize)]
 struct UtilPoint {
@@ -231,7 +113,7 @@ struct Context {
 
 #[derive(Default, Deserialize, Serialize)]
 #[serde(default)] // deserialize missing fields as default value
-pub struct ProfApp {
+struct ProfApp {
     #[serde(skip)]
     windows: Vec<Window>,
 
@@ -483,7 +365,6 @@ impl Slot {
                 };
 
                 row_items.push(Item {
-                    _row: row,
                     interval: Interval::new(start, stop),
                     color,
                 });
@@ -1198,4 +1079,38 @@ impl UiExtra for egui::Ui {
             },
         );
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn start() {
+    // Log to stdout (if you run with `RUST_LOG=debug`).
+    tracing_subscriber::fmt::init();
+
+    let native_options = eframe::NativeOptions::default();
+    eframe::run_native(
+        "Legion Prof",
+        native_options,
+        Box::new(|cc| Box::new(ProfApp::new(cc))),
+    );
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn start() {
+    // Make sure panics are logged using `console.error`.
+    console_error_panic_hook::set_once();
+
+    // Redirect tracing to console.log and friends:
+    tracing_wasm::set_as_global_default();
+
+    let web_options = eframe::WebOptions::default();
+
+    wasm_bindgen_futures::spawn_local(async {
+        eframe::start_web(
+            "the_canvas_id", // hardcode it
+            web_options,
+            Box::new(|cc| Box::new(ProfApp::new(cc))),
+        )
+        .await
+        .expect("failed to start eframe");
+    });
 }
