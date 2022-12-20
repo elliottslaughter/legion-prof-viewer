@@ -19,7 +19,7 @@ Tech demo for potential future Legion Prof interface.
 - [ ] Vertical zoom
 - [ ] Search (with load all data option to get better search results)
 - [ ] Task detail view
-
+- [ ] Keyboard bindings
 
 ### Native
 
