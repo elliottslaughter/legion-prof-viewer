@@ -940,7 +940,12 @@ impl ProfApp {
                 // Still in drag, draw a rectangle to show the dragged region
                 let drag_rect =
                     Rect::from_min_max(Pos2::new(min, rect.min.y), Pos2::new(max, rect.max.y));
-                let color = Color32::GRAY.linear_multiply(0.2);
+                let mut color = Color32::GRAY.linear_multiply(0.2);
+                // FIXME: Figure out a better way to get a dark color in light theme
+                #[cfg(target_arch = "wasm32")]
+                {
+                    color = Color32::BLACK.linear_multiply(0.2);
+                }
                 ui.painter().rect(drag_rect, 0.0, color, Stroke::NONE);
 
                 drag_interval = Some(interval);
