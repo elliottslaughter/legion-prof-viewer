@@ -1081,7 +1081,7 @@ impl eframe::App for ProfApp {
                 cx.view_interval = cx.total_interval;
             }
 
-            if ui.button("Reset View Interval").clicked() {
+            if ui.button("Reset Zoom Level").clicked() {
                 cx.view_interval = cx.total_interval;
             }
 
