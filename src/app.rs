@@ -152,6 +152,7 @@ impl Interval {
 struct Item {
     _row: u64,
     interval: Interval,
+    color: Color32,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Default, Deserialize, Serialize)]
@@ -374,11 +375,11 @@ impl Entry for Summary {
             let time = cx.view_interval.unlerp(util.time);
             rect.lerp(Vec2::new(time, 1.0 - util.util))
         };
-        let screen_to_util = |screen: Pos2| {
-            UtilPoint {
-                time: cx.view_interval.lerp((screen.x - rect.left()) / rect.width()),
-                util: 1.0 - (screen.y - rect.top()) / rect.height(),
-            }
+        let screen_to_util = |screen: Pos2| UtilPoint {
+            time: cx
+                .view_interval
+                .lerp((screen.x - rect.left()) / rect.width()),
+            util: 1.0 - (screen.y - rect.top()) / rect.height(),
         };
 
         // Linear interpolation along the line from p1 to p2
@@ -469,9 +470,22 @@ impl Slot {
             for i in 0..N {
                 let start = config.interval.lerp((i as f32 + 0.05) / (N as f32));
                 let stop = config.interval.lerp((i as f32 + 0.95) / (N as f32));
+
+                let color = match (row * N + i) % 7 {
+                    0 => Color32::BLUE,
+                    1 => Color32::RED,
+                    2 => Color32::GREEN,
+                    3 => Color32::YELLOW,
+                    4 => Color32::KHAKI,
+                    5 => Color32::DARK_GREEN,
+                    6 => Color32::DARK_BLUE,
+                    _ => Color32::WHITE,
+                };
+
                 row_items.push(Item {
                     _row: row,
                     interval: Interval::new(start, stop),
+                    color,
                 });
             }
             items.push(row_items);
@@ -512,7 +526,6 @@ impl Entry for Slot {
                 .rect(rect, 0.0, visuals.bg_fill, visuals.bg_stroke);
 
             let rows = self.rows();
-            let mut i = 0;
             for (row, row_items) in self.items.iter().enumerate() {
                 // Need to reverse the rows because we're working in screen space
                 let irow = self.items.len() - row - 1;
@@ -538,7 +551,6 @@ impl Entry for Slot {
 
                 // Now handle the items
                 for item in row_items {
-                    i += 1;
                     if !cx.view_interval.has_intersection(item.interval) {
                         continue;
                     }
@@ -548,16 +560,6 @@ impl Entry for Slot {
                     let min = rect.lerp(Vec2::new(start, (irow as f32 + 0.05) / rows as f32));
                     let max = rect.lerp(Vec2::new(stop, (irow as f32 + 0.95) / rows as f32));
 
-                    let color = match i % 7 {
-                        0 => Color32::BLUE,
-                        1 => Color32::RED,
-                        2 => Color32::GREEN,
-                        3 => Color32::YELLOW,
-                        4 => Color32::KHAKI,
-                        5 => Color32::DARK_GREEN,
-                        6 => Color32::DARK_BLUE,
-                        _ => Color32::WHITE,
-                    };
                     let item_rect = Rect::from_min_max(min, max);
                     if row_hover && hover_pos.map_or(false, |h| item_rect.contains(h)) {
                         hover_pos = None;
@@ -568,7 +570,7 @@ impl Entry for Slot {
                             format!("Item: {} Row: {}", item.interval, row),
                         );
                     }
-                    ui.painter().rect(item_rect, 0.0, color, Stroke::NONE);
+                    ui.painter().rect(item_rect, 0.0, item.color, Stroke::NONE);
                 }
             }
         }
