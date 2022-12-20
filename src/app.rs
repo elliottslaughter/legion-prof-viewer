@@ -113,6 +113,9 @@ impl Interval {
     fn lerp(self, value: f32) -> Timestamp {
         Timestamp((value * ((self.stop.0 - self.start.0) as f32)).round() as i64 + self.start.0)
     }
+    fn has_intersection(self, other: Interval) -> bool {
+        !(other.stop < self.start || other.start > self.stop)
+    }
 }
 
 /// Overview:
@@ -366,32 +369,49 @@ impl Entry for Summary {
 
         let stroke = Stroke::new(visuals.bg_stroke.width, self.color);
 
-        let mut last_util = None;
+        let mut last_util: Option<&UtilPoint> = None;
+        let mut last_point: Option<Pos2> = None;
         let mut hover_util = None;
-        let mut last_point = None;
-        let mut last_last_point: Option<Pos2> = None;
         for util in &self.utilization {
             // Convert utilization to screen space
             let time = cx.view_interval.unlerp(util.time);
-            let point = rect.lerp(Vec2::new(time, 1.0 - util.util));
-            if let Some(last) = last_point {
-                ui.painter().line_segment([last, point], stroke);
-            }
+            let mut point = rect.lerp(Vec2::new(time, 1.0 - util.util));
+            if let Some(mut last) = last_point {
+                let last_util = last_util.unwrap();
+                if cx
+                    .view_interval
+                    .has_intersection(Interval::new(last_util.time, util.time))
+                {
+                    // Interpolate when out of view
+                    if last.x < rect.min.x {
+                        let ratio = (rect.min.x - last.x) / (point.x - last.x);
+                        last = Rect::from_min_max(last, point).lerp(Vec2::new(ratio, ratio));
+                    }
+                    if point.x > rect.max.x {
+                        let ratio = (rect.max.x - last.x) / (point.x - last.x);
+                        point = Rect::from_min_max(last, point).lerp(Vec2::new(ratio, ratio));
+                    }
 
-            if let (Some(hover), Some(last), Some(last_last)) =
-                (hover_pos, last_point, last_last_point)
-            {
-                let point_dist = (point.x - hover.x).abs();
-                let last_dist = (last.x - hover.x).abs();
-                let last_last_dist = (last_last.x - hover.x).abs();
-                if last_dist < point_dist && last_dist < last_last_dist {
-                    ui.painter()
-                        .circle_stroke(last, TOOLTIP_RADIUS, visuals.fg_stroke);
-                    hover_util = last_util;
+                    ui.painter().line_segment([last, point], stroke);
+
+                    if let Some(hover) = hover_pos {
+                        if last.x <= hover.x && hover.x < point.x {
+                            let ratio = (hover.x - last.x) / (point.x - last.x);
+                            let interp =
+                                Rect::from_min_max(last, point).lerp(Vec2::new(ratio, ratio));
+                            ui.painter()
+                                .circle_stroke(interp, TOOLTIP_RADIUS, visuals.fg_stroke);
+                            hover_util = Some(UtilPoint {
+                                time: cx
+                                    .view_interval
+                                    .lerp((interp.x - rect.left()) / rect.width()),
+                                util: 1.0 - (interp.y - rect.top()) / rect.height(),
+                            });
+                        }
+                    }
                 }
             }
 
-            last_last_point = last_point;
             last_point = Some(point);
             last_util = Some(util);
         }
@@ -512,7 +532,7 @@ impl Entry for Slot {
                 // Now handle the items
                 for item in row_items {
                     i += 1;
-                    if item.interval.stop < cx.view_interval.start || item.interval.start > cx.view_interval.stop {
+                    if !cx.view_interval.has_intersection(item.interval) {
                         continue;
                     }
 

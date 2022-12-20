@@ -14,7 +14,9 @@ Tech demo for potential future Legion Prof interface.
 - [x] Multiple profiles
 - [x] There is a bug when you move the cursor near the right edge of the screen, the scroll bar gets pushed away
 - [x] Timestamps on the vertical cursor
-- [ ] Window pan/zoom
+- [x] Horizontal zoom
+- [ ] Horizontal pan
+- [ ] Vertical zoom
 - [ ] Search (with load all data option to get better search results)
 - [ ] Task detail view
 
