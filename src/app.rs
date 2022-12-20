@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
-use crate::data::{DataSource, Item, EntryInfo, UtilPoint, EntryID};
+use crate::data::{DataSource, EntryID, EntryInfo, Item, UtilPoint};
 use crate::timestamp::{Interval, Timestamp};
 
 /// Overview:
@@ -212,9 +212,13 @@ trait Entry {
 
 impl Summary {
     fn inflate(&mut self, config: &mut Config) {
-        let tiles = config.data_source.request_tiles(&self.slot_id, config.interval);
+        let tiles = config
+            .data_source
+            .request_tiles(&self.slot_id, config.interval);
         for tile_id in tiles {
-            let tile = config.data_source.fetch_summary_tile(&self.slot_id, &tile_id);
+            let tile = config
+                .data_source
+                .fetch_summary_tile(&self.slot_id, &tile_id);
             self.utilization.extend(tile.utilization);
         }
     }
@@ -390,7 +394,12 @@ impl Slot {
 
 impl Entry for Slot {
     fn new(info: &EntryInfo, slot_id: EntryID, _level: u64) -> Self {
-        if let EntryInfo::Slot { short_name, long_name, max_rows } = info {
+        if let EntryInfo::Slot {
+            short_name,
+            long_name,
+            max_rows,
+        } = info
+        {
             Self {
                 slot_id,
                 short_name: short_name.to_owned(),
@@ -556,11 +565,21 @@ impl<S: Entry> Panel<S> {
 
 impl<S: Entry> Entry for Panel<S> {
     fn new(info: &EntryInfo, slot_id: EntryID, level: u64) -> Self {
-        if let EntryInfo::Panel { short_name, long_name, summary, slots } = info {
-            let summary = summary.as_ref().map(|s| Summary::new(&s, slot_id.clone(), level + 1));
-            let slots = slots.iter().enumerate().map(|(i, s)| {
-                S::new(s, slot_id.child(i as u64), level + 1)
-            }).collect();
+        if let EntryInfo::Panel {
+            short_name,
+            long_name,
+            summary,
+            slots,
+        } = info
+        {
+            let summary = summary
+                .as_ref()
+                .map(|s| Summary::new(&s, slot_id.clone(), level + 1));
+            let slots = slots
+                .iter()
+                .enumerate()
+                .map(|(i, s)| S::new(s, slot_id.child(i as u64), level + 1))
+                .collect();
             Self {
                 slot_id,
                 short_name: short_name.to_owned(),
@@ -651,7 +670,7 @@ impl<S: Entry> Entry for Panel<S> {
 }
 
 impl Config {
-    fn new<D: DataSource>(mut data_source: D) -> Self {
+    fn new(mut data_source: Box<dyn DataSource>) -> Self {
         let max_node = data_source.fetch_info().nodes();
         Self {
             min_node: 0,
@@ -659,20 +678,20 @@ impl Config {
 
             interval: data_source.interval(),
 
-            data_source: Box::new(data_source),
+            data_source: data_source,
         }
     }
 }
 
 impl Window {
-    fn new<D: DataSource>(mut data_source: D, index: u64) -> Self {
-        let kinds = data_source.fetch_info().kinds();
+    fn new(data_source: Box<dyn DataSource>, index: u64) -> Self {
+        let mut config = Config::new(data_source);
 
         Self {
-            panel: Panel::new(data_source.fetch_info(), EntryID::root(), 0),
+            panel: Panel::new(config.data_source.fetch_info(), EntryID::root(), 0),
             index,
-            kinds,
-            config: Config::new(data_source),
+            kinds: config.data_source.fetch_info().kinds(),
+            config,
         }
     }
 
@@ -819,7 +838,7 @@ impl Window {
 
 impl ProfApp {
     /// Called once before the first frame.
-    pub fn new<D: DataSource>(cc: &eframe::CreationContext<'_>, data_source: D) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, data_source: Box<dyn DataSource>) -> Self {
         // This is also where you can customized the look at feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
 
@@ -1146,7 +1165,7 @@ impl UiExtra for egui::Ui {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn start<D: DataSource>(data_source: D) {
+pub fn start(data_source: Box<dyn DataSource>) {
     // Log to stdout (if you run with `RUST_LOG=debug`).
     tracing_subscriber::fmt::init();
 
@@ -1159,7 +1178,7 @@ pub fn start<D: DataSource>(data_source: D) {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn start<D: DataSource>(data_source: D) {
+pub fn start(data_source: Box<dyn DataSource>) {
     // Make sure panics are logged using `console.error`.
     console_error_panic_hook::set_once();
 

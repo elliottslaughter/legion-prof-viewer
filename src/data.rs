@@ -12,7 +12,7 @@ impl EntryID {
         Self(Vec::new())
     }
     pub fn child(&self, index: u64) -> Self {
-        let result = self.clone();
+        let mut result = self.clone();
         result.0.push(index);
         result
     }
@@ -76,8 +76,8 @@ impl EntryInfo {
     }
     pub fn kinds(&self) -> Vec<String> {
         if let EntryInfo::Panel { slots, .. } = self {
-            let result = Vec::new();
-            let set = BTreeSet::new();
+            let mut result = Vec::new();
+            let mut set = BTreeSet::new();
             for slot in slots {
                 if let EntryInfo::Panel { long_name, .. } = slot {
                     if set.insert(long_name) {
