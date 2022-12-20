@@ -1,10 +1,9 @@
 use egui::{Align2, Color32, NumExt, Pos2, Rect, ScrollArea, Slider, Stroke, TextStyle, Vec2};
-use rand::Rng;
 use serde::{Deserialize, Serialize};
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
-use crate::data::Item;
+use crate::data::{DataSource, Item, EntryInfo, UtilPoint, EntryID};
 use crate::timestamp::{Interval, Timestamp};
 
 /// Overview:
@@ -37,39 +36,32 @@ use crate::timestamp::{Interval, Timestamp};
 ///   * One Slot for each processor, channel, memory
 ///   * Viewer widget for items
 
-#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Default, Deserialize, Serialize)]
-struct UtilPoint {
-    time: Timestamp,
-    util: f32,
-}
-
-#[derive(Default)]
 struct Summary {
+    slot_id: EntryID,
     utilization: Vec<UtilPoint>,
     color: Color32,
 }
 
-#[derive(Default)]
 struct Slot {
-    expanded: bool,
+    slot_id: EntryID,
     short_name: String,
     long_name: String,
+    expanded: bool,
     max_rows: u64,
     items: Vec<Vec<Item>>, // row -> [item]
 }
 
-#[derive(Default)]
 struct Panel<S: Entry> {
-    expanded: bool,
+    slot_id: EntryID,
     short_name: String,
     long_name: String,
     level: u64,
+    expanded: bool,
 
     summary: Option<Summary>,
     slots: Vec<S>,
 }
 
-#[derive(Default, Deserialize, Serialize)]
 struct Config {
     // Node selection controls
     min_node: u64,
@@ -77,11 +69,11 @@ struct Config {
 
     // This is just for the local profile
     interval: Interval,
+
+    data_source: Box<dyn DataSource>,
 }
 
-#[derive(Default, Deserialize, Serialize)]
 struct Window {
-    #[serde(skip)]
     panel: Panel<Panel<Panel<Slot>>>, // nodes -> kind -> proc/chan/mem
     index: u64,
     kinds: Vec<String>,
@@ -106,9 +98,6 @@ struct Context {
     // data gets drawn. This gets used rendering the cursor, but we
     // only know it when we render slots. So stash it here.
     slot_rect: Option<Rect>,
-
-    #[serde(skip)]
-    rng: rand::rngs::ThreadRng,
 }
 
 #[derive(Default, Deserialize, Serialize)]
@@ -125,6 +114,8 @@ struct ProfApp {
 }
 
 trait Entry {
+    fn new(info: &EntryInfo, slot_id: EntryID, level: u64) -> Self;
+
     fn label_text(&self) -> &str;
     fn hover_text(&self) -> &str;
 
@@ -180,46 +171,68 @@ trait Entry {
     fn toggle_expanded(&mut self);
 }
 
-impl Summary {
-    fn generate_point(
-        &mut self,
-        first: UtilPoint,
-        last: UtilPoint,
-        level: i32,
-        max_level: i32,
-        cx: &mut Context,
-    ) {
-        let time = Timestamp((first.time.0 + last.time.0) / 2);
-        let util = (first.util + last.util) * 0.5;
-        let diff = (cx.rng.gen::<f32>() - 0.5) / 1.2_f32.powi(max_level - level);
-        let util = (util + diff).at_least(0.0).at_most(1.0);
-        let point = UtilPoint { time, util };
-        if level > 0 {
-            self.generate_point(first, point, level - 1, max_level, cx);
-        }
-        self.utilization.push(point);
-        if level > 0 {
-            self.generate_point(point, last, level - 1, max_level, cx);
-        }
-    }
+// impl Summary {
+//     fn generate_point(
+//         &mut self,
+//         first: UtilPoint,
+//         last: UtilPoint,
+//         level: i32,
+//         max_level: i32,
+//         cx: &mut Context,
+//     ) {
+//         let time = Timestamp((first.time.0 + last.time.0) / 2);
+//         let util = (first.util + last.util) * 0.5;
+//         let diff = (cx.rng.gen::<f32>() - 0.5) / 1.2_f32.powi(max_level - level);
+//         let util = (util + diff).at_least(0.0).at_most(1.0);
+//         let point = UtilPoint { time, util };
+//         if level > 0 {
+//             self.generate_point(first, point, level - 1, max_level, cx);
+//         }
+//         self.utilization.push(point);
+//         if level > 0 {
+//             self.generate_point(point, last, level - 1, max_level, cx);
+//         }
+//     }
 
-    fn generate(&mut self, config: &Config, cx: &mut Context) {
-        const LEVELS: i32 = 8;
-        let first = UtilPoint {
-            time: config.interval.start,
-            util: cx.rng.gen(),
-        };
-        let last = UtilPoint {
-            time: config.interval.stop,
-            util: cx.rng.gen(),
-        };
-        self.utilization.push(first);
-        self.generate_point(first, last, LEVELS, LEVELS, cx);
-        self.utilization.push(last);
+//     fn generate(&mut self, config: &Config, cx: &mut Context) {
+//         const LEVELS: i32 = 8;
+//         let first = UtilPoint {
+//             time: config.interval.start,
+//             util: cx.rng.gen(),
+//         };
+//         let last = UtilPoint {
+//             time: config.interval.stop,
+//             util: cx.rng.gen(),
+//         };
+//         self.utilization.push(first);
+//         self.generate_point(first, last, LEVELS, LEVELS, cx);
+//         self.utilization.push(last);
+//     }
+// }
+
+impl Summary {
+    fn inflate(&mut self, config: &mut Config) {
+        let tiles = config.data_source.request_tiles(&self.slot_id, config.interval);
+        for tile_id in tiles {
+            let tile = config.data_source.fetch_summary_tile(&self.slot_id, &tile_id);
+            self.utilization.extend(tile.utilization);
+        }
     }
 }
 
 impl Entry for Summary {
+    fn new(info: &EntryInfo, slot_id: EntryID, _level: u64) -> Self {
+        if let EntryInfo::Summary { color } = info {
+            Self {
+                slot_id,
+                utilization: Vec::new(),
+                color: *color,
+            }
+        } else {
+            unreachable!()
+        }
+    }
+
     fn label_text(&self) -> &str {
         "avg"
     }
@@ -242,7 +255,7 @@ impl Entry for Summary {
         let hover_pos = response.hover_pos(); // where is the mouse hovering?
 
         if self.utilization.is_empty() {
-            self.generate(config, cx);
+            self.inflate(config);
         }
 
         let style = ui.style();
@@ -376,6 +389,21 @@ impl Slot {
 }
 
 impl Entry for Slot {
+    fn new(info: &EntryInfo, slot_id: EntryID, _level: u64) -> Self {
+        if let EntryInfo::Slot { short_name, long_name, max_rows } = info {
+            Self {
+                slot_id,
+                short_name: short_name.to_owned(),
+                long_name: long_name.to_owned(),
+                expanded: true,
+                max_rows: *max_rows,
+                items: Vec::new(),
+            }
+        } else {
+            unreachable!()
+        }
+    }
+
     fn label_text(&self) -> &str {
         &self.short_name
     }
@@ -527,6 +555,26 @@ impl<S: Entry> Panel<S> {
 }
 
 impl<S: Entry> Entry for Panel<S> {
+    fn new(info: &EntryInfo, slot_id: EntryID, level: u64) -> Self {
+        if let EntryInfo::Panel { short_name, long_name, summary, slots } = info {
+            let summary = summary.as_ref().map(|s| Summary::new(&s, slot_id.clone(), level + 1));
+            let slots = slots.iter().enumerate().map(|(i, s)| {
+                S::new(s, slot_id.child(i as u64), level + 1)
+            }).collect();
+            Self {
+                slot_id,
+                short_name: short_name.to_owned(),
+                long_name: long_name.to_owned(),
+                level,
+                expanded: level != 2,
+                summary,
+                slots,
+            }
+        } else {
+            unreachable!()
+        }
+    }
+
     fn label_text(&self) -> &str {
         &self.short_name
     }
@@ -602,12 +650,33 @@ impl<S: Entry> Entry for Panel<S> {
     }
 }
 
-impl Window {
-    fn content(&mut self, ui: &mut egui::Ui, cx: &mut Context) {
-        if self.panel.slots.is_empty() {
-            self.generate(cx);
-        }
+impl Config {
+    fn new<D: DataSource>(mut data_source: D) -> Self {
+        let max_node = data_source.fetch_info().nodes();
+        Self {
+            min_node: 0,
+            max_node,
 
+            interval: data_source.interval(),
+
+            data_source: Box::new(data_source),
+        }
+    }
+}
+
+impl Window {
+    fn new<D: DataSource>(mut data_source: D, index: u64) -> Self {
+        let kinds = data_source.fetch_info().kinds();
+
+        Self {
+            panel: Panel::new(data_source.fetch_info(), EntryID::root(), 0),
+            index,
+            kinds,
+            config: Config::new(data_source),
+        }
+    }
+
+    fn content(&mut self, ui: &mut egui::Ui, cx: &mut Context) {
         ui.heading(format!("Profile {}", self.index));
 
         ScrollArea::vertical()
@@ -678,79 +747,79 @@ impl Window {
         self.expand_collapse(ui, cx);
     }
 
-    fn generate(&mut self, cx: &mut Context) {
-        self.kinds = vec![
-            "CPU".to_string(),
-            "GPU".to_string(),
-            "OMP".to_string(),
-            "Py".to_string(),
-            "Util".to_string(),
-            "Chan".to_string(),
-            "SysMem".to_string(),
-        ];
+    // fn generate(&mut self, cx: &mut Context) {
+    //     self.kinds = vec![
+    //         "CPU".to_string(),
+    //         "GPU".to_string(),
+    //         "OMP".to_string(),
+    //         "Py".to_string(),
+    //         "Util".to_string(),
+    //         "Chan".to_string(),
+    //         "SysMem".to_string(),
+    //     ];
 
-        const NODES: i32 = 8192;
-        const PROCS: i32 = 8;
-        let mut node_slots = Vec::new();
-        for node in 0..NODES {
-            let mut kind_slots = Vec::new();
-            let colors = &[Color32::BLUE, Color32::GREEN, Color32::RED, Color32::YELLOW];
-            for (i, kind) in self.kinds.iter().enumerate() {
-                let color = colors[i % colors.len()];
-                let mut proc_slots = Vec::new();
-                for proc in 0..PROCS {
-                    let rows: u64 = cx.rng.gen_range(0..64);
-                    let items = Vec::new();
-                    // Leave items empty, we'll generate it later
-                    proc_slots.push(Slot {
-                        expanded: true,
-                        short_name: format!(
-                            "{}{}",
-                            kind.chars().next().unwrap().to_lowercase(),
-                            proc
-                        ),
-                        long_name: format!("Node {} {} {}", node, kind, proc),
-                        max_rows: rows,
-                        items,
-                    });
-                }
-                kind_slots.push(Panel {
-                    expanded: false,
-                    short_name: kind.to_lowercase(),
-                    long_name: format!("Node {} {}", node, kind),
-                    level: 2,
-                    summary: Some(Summary {
-                        utilization: Vec::new(),
-                        color,
-                    }),
-                    slots: proc_slots,
-                });
-            }
-            node_slots.push(Panel {
-                expanded: true,
-                short_name: format!("n{}", node),
-                long_name: format!("Node {}", node),
-                level: 1,
-                summary: None,
-                slots: kind_slots,
-            });
-        }
-        self.panel = Panel {
-            expanded: true,
-            short_name: "root".to_owned(),
-            long_name: "root".to_owned(),
-            level: 0,
-            summary: None,
-            slots: node_slots,
-        };
-        self.config.min_node = 0;
-        self.config.max_node = self.panel.slots.len() as u64 - 1;
-    }
+    //     const NODES: i32 = 8192;
+    //     const PROCS: i32 = 8;
+    //     let mut node_slots = Vec::new();
+    //     for node in 0..NODES {
+    //         let mut kind_slots = Vec::new();
+    //         let colors = &[Color32::BLUE, Color32::GREEN, Color32::RED, Color32::YELLOW];
+    //         for (i, kind) in self.kinds.iter().enumerate() {
+    //             let color = colors[i % colors.len()];
+    //             let mut proc_slots = Vec::new();
+    //             for proc in 0..PROCS {
+    //                 let rows: u64 = cx.rng.gen_range(0..64);
+    //                 let items = Vec::new();
+    //                 // Leave items empty, we'll generate it later
+    //                 proc_slots.push(Slot {
+    //                     expanded: true,
+    //                     short_name: format!(
+    //                         "{}{}",
+    //                         kind.chars().next().unwrap().to_lowercase(),
+    //                         proc
+    //                     ),
+    //                     long_name: format!("Node {} {} {}", node, kind, proc),
+    //                     max_rows: rows,
+    //                     items,
+    //                 });
+    //             }
+    //             kind_slots.push(Panel {
+    //                 expanded: false,
+    //                 short_name: kind.to_lowercase(),
+    //                 long_name: format!("Node {} {}", node, kind),
+    //                 level: 2,
+    //                 summary: Some(Summary {
+    //                     utilization: Vec::new(),
+    //                     color,
+    //                 }),
+    //                 slots: proc_slots,
+    //             });
+    //         }
+    //         node_slots.push(Panel {
+    //             expanded: true,
+    //             short_name: format!("n{}", node),
+    //             long_name: format!("Node {}", node),
+    //             level: 1,
+    //             summary: None,
+    //             slots: kind_slots,
+    //         });
+    //     }
+    //     self.panel = Panel {
+    //         expanded: true,
+    //         short_name: "root".to_owned(),
+    //         long_name: "root".to_owned(),
+    //         level: 0,
+    //         summary: None,
+    //         slots: node_slots,
+    //     };
+    //     self.config.min_node = 0;
+    //     self.config.max_node = self.panel.slots.len() as u64 - 1;
+    // }
 }
 
 impl ProfApp {
     /// Called once before the first frame.
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new<D: DataSource>(cc: &eframe::CreationContext<'_>, data_source: D) -> Self {
         // This is also where you can customized the look at feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
 
@@ -763,13 +832,8 @@ impl ProfApp {
         };
 
         result.windows.clear();
-        result.windows.push(Window::default());
-        let window = result.windows.last_mut().unwrap();
-        // Need to at least pick the time bounds up front
-        window.config.interval = Interval::new(
-            Timestamp(0),
-            Timestamp(result.cx.rng.gen_range(1_000_000..2_000_000)),
-        );
+        result.windows.push(Window::new(data_source, 0));
+        let window = result.windows.last().unwrap();
         result.cx.total_interval = window.config.interval;
         result.cx.view_interval = result.cx.total_interval;
 
@@ -945,22 +1009,22 @@ impl eframe::App for ProfApp {
                 });
             }
 
-            if ui.button("Add Another Profile").clicked() {
-                let mut index = 0;
-                if let Some(last) = windows.last() {
-                    index = last.index + 1;
-                }
-                windows.push(Window::default());
-                let window = windows.last_mut().unwrap();
-                window.index = index;
-                // Need to at least pick the time bounds up front
-                window.config.interval = Interval::new(
-                    Timestamp(0),
-                    Timestamp(cx.rng.gen_range(1_000_000..2_000_000)),
-                );
-                cx.total_interval = cx.total_interval.union(window.config.interval);
-                cx.view_interval = cx.total_interval;
-            }
+            // if ui.button("Add Another Profile").clicked() {
+            //     let mut index = 0;
+            //     if let Some(last) = windows.last() {
+            //         index = last.index + 1;
+            //     }
+            //     windows.push(Window::default());
+            //     let window = windows.last_mut().unwrap();
+            //     window.index = index;
+            //     // Need to at least pick the time bounds up front
+            //     window.config.interval = Interval::new(
+            //         Timestamp(0),
+            //         Timestamp(cx.rng.gen_range(1_000_000..2_000_000)),
+            //     );
+            //     cx.total_interval = cx.total_interval.union(window.config.interval);
+            //     cx.view_interval = cx.total_interval;
+            // }
 
             if ui.button("Reset Zoom Level").clicked() {
                 cx.view_interval = cx.total_interval;
@@ -1082,7 +1146,7 @@ impl UiExtra for egui::Ui {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn start() {
+pub fn start<D: DataSource>(data_source: D) {
     // Log to stdout (if you run with `RUST_LOG=debug`).
     tracing_subscriber::fmt::init();
 
@@ -1090,12 +1154,12 @@ pub fn start() {
     eframe::run_native(
         "Legion Prof",
         native_options,
-        Box::new(|cc| Box::new(ProfApp::new(cc))),
+        Box::new(|cc| Box::new(ProfApp::new(cc, data_source))),
     );
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn start() {
+pub fn start<D: DataSource>(data_source: D) {
     // Make sure panics are logged using `console.error`.
     console_error_panic_hook::set_once();
 
@@ -1108,7 +1172,7 @@ pub fn start() {
         eframe::start_web(
             "the_canvas_id", // hardcode it
             web_options,
-            Box::new(|cc| Box::new(ProfApp::new(cc))),
+            Box::new(|cc| Box::new(ProfApp::new(cc, data_source))),
         )
         .await
         .expect("failed to start eframe");
