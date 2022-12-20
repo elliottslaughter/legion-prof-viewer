@@ -369,13 +369,29 @@ impl Entry for Summary {
 
         let stroke = Stroke::new(visuals.bg_stroke.width, self.color);
 
+        // Conversions to and from screen space coordinates
+        let util_to_screen = |util: &UtilPoint| {
+            let time = cx.view_interval.unlerp(util.time);
+            rect.lerp(Vec2::new(time, 1.0 - util.util))
+        };
+        let screen_to_util = |screen: Pos2| {
+            UtilPoint {
+                time: cx.view_interval.lerp((screen.x - rect.left()) / rect.width()),
+                util: 1.0 - (screen.y - rect.top()) / rect.height(),
+            }
+        };
+
+        // Linear interpolation along the line from p1 to p2
+        let interpolate = |p1: Pos2, p2: Pos2, x: f32| {
+            let ratio = (x - p1.x) / (p2.x - p1.x);
+            Rect::from_min_max(p1, p2).lerp(Vec2::new(ratio, ratio))
+        };
+
         let mut last_util: Option<&UtilPoint> = None;
         let mut last_point: Option<Pos2> = None;
         let mut hover_util = None;
         for util in &self.utilization {
-            // Convert utilization to screen space
-            let time = cx.view_interval.unlerp(util.time);
-            let mut point = rect.lerp(Vec2::new(time, 1.0 - util.util));
+            let mut point = util_to_screen(util);
             if let Some(mut last) = last_point {
                 let last_util = last_util.unwrap();
                 if cx
@@ -384,29 +400,20 @@ impl Entry for Summary {
                 {
                     // Interpolate when out of view
                     if last.x < rect.min.x {
-                        let ratio = (rect.min.x - last.x) / (point.x - last.x);
-                        last = Rect::from_min_max(last, point).lerp(Vec2::new(ratio, ratio));
+                        last = interpolate(last, point, rect.min.x);
                     }
                     if point.x > rect.max.x {
-                        let ratio = (rect.max.x - last.x) / (point.x - last.x);
-                        point = Rect::from_min_max(last, point).lerp(Vec2::new(ratio, ratio));
+                        point = interpolate(last, point, rect.max.x);
                     }
 
                     ui.painter().line_segment([last, point], stroke);
 
                     if let Some(hover) = hover_pos {
                         if last.x <= hover.x && hover.x < point.x {
-                            let ratio = (hover.x - last.x) / (point.x - last.x);
-                            let interp =
-                                Rect::from_min_max(last, point).lerp(Vec2::new(ratio, ratio));
+                            let interp = interpolate(last, point, hover.x);
                             ui.painter()
                                 .circle_stroke(interp, TOOLTIP_RADIUS, visuals.fg_stroke);
-                            hover_util = Some(UtilPoint {
-                                time: cx
-                                    .view_interval
-                                    .lerp((interp.x - rect.left()) / rect.width()),
-                                util: 1.0 - (interp.y - rect.top()) / rect.height(),
-                            });
+                            hover_util = Some(screen_to_util(interp));
                         }
                     }
                 }
