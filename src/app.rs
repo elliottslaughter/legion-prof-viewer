@@ -6,7 +6,7 @@ use std::fmt;
 use std::time::Instant;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default, Deserialize, Serialize)]
-struct Timestamp(u64 /* ns */);
+struct Timestamp(i64 /* ns */);
 
 impl fmt::Display for Timestamp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -111,7 +111,7 @@ impl Interval {
     }
     // Convert [0,1] relative space into a timestamp
     fn lerp(self, value: f32) -> Timestamp {
-        Timestamp((value * ((self.stop.0 - self.start.0) as f32)) as u64 + self.start.0)
+        Timestamp((value * ((self.stop.0 - self.start.0) as f32)).round() as i64 + self.start.0)
     }
 }
 
@@ -511,10 +511,16 @@ impl Entry for Slot {
 
                 // Now handle the items
                 for item in row_items {
-                    let start = cx.view_interval.unlerp(item.interval.start);
-                    let stop = cx.view_interval.unlerp(item.interval.stop);
+                    i += 1;
+                    if item.interval.stop < cx.view_interval.start || item.interval.start > cx.view_interval.stop {
+                        continue;
+                    }
+
+                    let start = cx.view_interval.unlerp(item.interval.start).at_least(0.0);
+                    let stop = cx.view_interval.unlerp(item.interval.stop).at_most(1.0);
                     let min = rect.lerp(Vec2::new(start, (irow as f32 + 0.05) / rows as f32));
                     let max = rect.lerp(Vec2::new(stop, (irow as f32 + 0.95) / rows as f32));
+
                     let color = match i % 7 {
                         0 => Color32::BLUE,
                         1 => Color32::RED,
@@ -525,7 +531,6 @@ impl Entry for Slot {
                         6 => Color32::DARK_BLUE,
                         _ => Color32::WHITE,
                     };
-                    i += 1;
                     let item_rect = Rect::from_min_max(min, max);
                     if row_hover && hover_pos.map_or(false, |h| item_rect.contains(h)) {
                         hover_pos = None;
@@ -911,7 +916,11 @@ impl ProfApp {
 
                 drag_interval = Some(interval);
             } else if response.drag_released() {
-                cx.view_interval = interval;
+                // Only set view interval if the drag was a certain amount
+                const MIN_DRAG_DISTANCE: f32 = 4.0;
+                if max - min > MIN_DRAG_DISTANCE {
+                    cx.view_interval = interval;
+                }
 
                 cx.drag_origin = None;
             }
