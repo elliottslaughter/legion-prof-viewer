@@ -105,7 +105,7 @@ impl EntryID {
         Some(
             (*last)
                 .try_into()
-                .map_or(EntryIndex::Summary, |i| EntryIndex::Slot(i)),
+                .map_or(EntryIndex::Summary, EntryIndex::Slot),
         )
     }
 
@@ -114,7 +114,7 @@ impl EntryID {
         Some(
             (*last)
                 .try_into()
-                .map_or(EntryIndex::Summary, |i| EntryIndex::Slot(i)),
+                .map_or(EntryIndex::Summary, EntryIndex::Slot),
         )
     }
 }

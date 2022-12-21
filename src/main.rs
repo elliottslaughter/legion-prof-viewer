@@ -119,9 +119,7 @@ impl DataSource for RandomDataSource {
 
     fn request_tiles(&mut self, _entry_id: &EntryID, request_interval: Interval) -> Vec<TileID> {
         // For now, always return the request in one tile
-        let mut result = Vec::new();
-        result.push(TileID(request_interval));
-        result
+        vec![TileID(request_interval)]
     }
 
     fn fetch_summary_tile(&mut self, _entry_id: &EntryID, _tile_id: &TileID) -> SummaryTile {

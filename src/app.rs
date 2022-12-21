@@ -524,7 +524,7 @@ impl<S: Entry> Entry for Panel<S> {
             let expanded = entry_id.level() != 2;
             let summary = summary
                 .as_ref()
-                .map(|s| Summary::new(&s, entry_id.summary()));
+                .map(|s| Summary::new(s, entry_id.summary()));
             let slots = slots
                 .iter()
                 .enumerate()
@@ -630,7 +630,7 @@ impl Config {
 
             interval: data_source.interval(),
 
-            data_source: data_source,
+            data_source,
         }
     }
 }
