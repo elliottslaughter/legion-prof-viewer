@@ -51,11 +51,13 @@ pub struct TileID(pub Interval);
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SummaryTile {
+    pub tile_id: TileID,
     pub utilization: Vec<UtilPoint>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SlotTile {
+    pub tile_id: TileID,
     pub items: Vec<Vec<Item>>, // row -> [item]
 }
 
@@ -63,8 +65,8 @@ pub trait DataSource {
     fn interval(&mut self) -> Interval;
     fn fetch_info(&mut self) -> &EntryInfo;
     fn request_tiles(&mut self, entry_id: &EntryID, request_interval: Interval) -> Vec<TileID>;
-    fn fetch_summary_tile(&mut self, entry_id: &EntryID, tile_id: &TileID) -> SummaryTile;
-    fn fetch_slot_tile(&mut self, entry_id: &EntryID, tile_id: &TileID) -> SlotTile;
+    fn fetch_summary_tile(&mut self, entry_id: &EntryID, tile_id: TileID) -> SummaryTile;
+    fn fetch_slot_tile(&mut self, entry_id: &EntryID, tile_id: TileID) -> SlotTile;
 }
 
 impl EntryID {

@@ -179,7 +179,7 @@ impl Summary {
         for tile_id in tiles {
             let tile = config
                 .data_source
-                .fetch_summary_tile(&self.entry_id, &tile_id);
+                .fetch_summary_tile(&self.entry_id, tile_id);
             self.utilization.extend(tile.utilization);
         }
     }
@@ -330,7 +330,7 @@ impl Slot {
             .data_source
             .request_tiles(&self.entry_id, config.interval);
         for tile_id in tiles {
-            let tile = config.data_source.fetch_slot_tile(&self.entry_id, &tile_id);
+            let tile = config.data_source.fetch_slot_tile(&self.entry_id, tile_id);
             // FIXME: Need to accumulate, not overwrite
             self.items = tile.items;
         }

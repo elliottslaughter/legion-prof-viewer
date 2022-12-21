@@ -122,7 +122,7 @@ impl DataSource for RandomDataSource {
         vec![TileID(request_interval)]
     }
 
-    fn fetch_summary_tile(&mut self, _entry_id: &EntryID, _tile_id: &TileID) -> SummaryTile {
+    fn fetch_summary_tile(&mut self, _entry_id: &EntryID, tile_id: TileID) -> SummaryTile {
         const LEVELS: i32 = 8;
         let first = UtilPoint {
             time: self.interval().start,
@@ -137,10 +137,10 @@ impl DataSource for RandomDataSource {
         self.generate_point(first, last, LEVELS, LEVELS, &mut utilization);
         utilization.push(last);
 
-        SummaryTile { utilization }
+        SummaryTile { tile_id, utilization }
     }
 
-    fn fetch_slot_tile(&mut self, entry_id: &EntryID, _tile_id: &TileID) -> SlotTile {
+    fn fetch_slot_tile(&mut self, entry_id: &EntryID, tile_id: TileID) -> SlotTile {
         let entry = self.fetch_info().get(entry_id);
 
         let max_rows = if let EntryInfo::Slot { max_rows, .. } = entry.unwrap() {
@@ -175,6 +175,6 @@ impl DataSource for RandomDataSource {
             }
             items.push(row_items);
         }
-        SlotTile { items }
+        SlotTile { tile_id, items }
     }
 }
