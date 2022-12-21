@@ -350,7 +350,7 @@ impl Slot {
 
         for (row, row_items) in tile.items.iter().enumerate() {
             // Need to reverse the rows because we're working in screen space
-            let irow = tile.items.len() /* FIXME: rows */ - row - 1;
+            let irow = rows - (row as u64) - 1;
 
             // We want to do this first on rows, so that we can cut the
             // entire row if we don't need it

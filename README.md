@@ -16,9 +16,9 @@ Tech demo for potential future Legion Prof interface.
 - [x] Timestamps on the vertical cursor
 - [x] Horizontal zoom
 - [x] Fetch from data source
-- [ ] Render data in tiles
+- [x] Bug in single-row slots not rendered at bottom
+- [x] Render data in tiles
 - [ ] Long-running tasks that cross tile boundary
-- [ ] Bug in single-row slots not rendered at bottom
 - [ ] Asynchronous data fetch
 - [ ] Horizontal pan
 - [ ] Vertical zoom
