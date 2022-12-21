@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 use crate::data::{DataSource, EntryID, EntryInfo, Item, UtilPoint};
-use crate::timestamp::{Interval, Timestamp};
+use crate::timestamp::Interval;
 
 /// Overview:
 ///   ProfApp -> Context, Window *
@@ -37,13 +37,13 @@ use crate::timestamp::{Interval, Timestamp};
 ///   * Viewer widget for items
 
 struct Summary {
-    slot_id: EntryID,
+    entry_id: EntryID,
     utilization: Vec<UtilPoint>,
     color: Color32,
 }
 
 struct Slot {
-    slot_id: EntryID,
+    entry_id: EntryID,
     short_name: String,
     long_name: String,
     expanded: bool,
@@ -52,10 +52,9 @@ struct Slot {
 }
 
 struct Panel<S: Entry> {
-    slot_id: EntryID,
+    entry_id: EntryID,
     short_name: String,
     long_name: String,
-    level: u64,
     expanded: bool,
 
     summary: Option<Summary>,
@@ -114,8 +113,9 @@ struct ProfApp {
 }
 
 trait Entry {
-    fn new(info: &EntryInfo, slot_id: EntryID, level: u64) -> Self;
+    fn new(info: &EntryInfo, entry_id: EntryID) -> Self;
 
+    fn entry_id(&self) -> &EntryID;
     fn label_text(&self) -> &str;
     fn hover_text(&self) -> &str;
 
@@ -175,21 +175,21 @@ impl Summary {
     fn inflate(&mut self, config: &mut Config) {
         let tiles = config
             .data_source
-            .request_tiles(&self.slot_id, config.interval);
+            .request_tiles(&self.entry_id, config.interval);
         for tile_id in tiles {
             let tile = config
                 .data_source
-                .fetch_summary_tile(&self.slot_id, &tile_id);
+                .fetch_summary_tile(&self.entry_id, &tile_id);
             self.utilization.extend(tile.utilization);
         }
     }
 }
 
 impl Entry for Summary {
-    fn new(info: &EntryInfo, slot_id: EntryID, _level: u64) -> Self {
+    fn new(info: &EntryInfo, entry_id: EntryID) -> Self {
         if let EntryInfo::Summary { color } = info {
             Self {
-                slot_id,
+                entry_id,
                 utilization: Vec::new(),
                 color: *color,
             }
@@ -198,6 +198,9 @@ impl Entry for Summary {
         }
     }
 
+    fn entry_id(&self) -> &EntryID {
+        &self.entry_id
+    }
     fn label_text(&self) -> &str {
         "avg"
     }
@@ -322,39 +325,20 @@ impl Slot {
         }
     }
 
-    fn generate(&mut self, config: &Config) {
-        let mut items = Vec::new();
-        for row in 0..self.max_rows {
-            let mut row_items = Vec::new();
-            const N: u64 = 1000;
-            for i in 0..N {
-                let start = config.interval.lerp((i as f32 + 0.05) / (N as f32));
-                let stop = config.interval.lerp((i as f32 + 0.95) / (N as f32));
-
-                let color = match (row * N + i) % 7 {
-                    0 => Color32::BLUE,
-                    1 => Color32::RED,
-                    2 => Color32::GREEN,
-                    3 => Color32::YELLOW,
-                    4 => Color32::KHAKI,
-                    5 => Color32::DARK_GREEN,
-                    6 => Color32::DARK_BLUE,
-                    _ => Color32::WHITE,
-                };
-
-                row_items.push(Item {
-                    interval: Interval::new(start, stop),
-                    color,
-                });
-            }
-            items.push(row_items);
+    fn inflate(&mut self, config: &mut Config) {
+        let tiles = config
+            .data_source
+            .request_tiles(&self.entry_id, config.interval);
+        for tile_id in tiles {
+            let tile = config.data_source.fetch_slot_tile(&self.entry_id, &tile_id);
+            // FIXME: Need to accumulate, not overwrite
+            self.items = tile.items;
         }
-        self.items = items;
     }
 }
 
 impl Entry for Slot {
-    fn new(info: &EntryInfo, slot_id: EntryID, _level: u64) -> Self {
+    fn new(info: &EntryInfo, entry_id: EntryID) -> Self {
         if let EntryInfo::Slot {
             short_name,
             long_name,
@@ -362,7 +346,7 @@ impl Entry for Slot {
         } = info
         {
             Self {
-                slot_id,
+                entry_id,
                 short_name: short_name.to_owned(),
                 long_name: long_name.to_owned(),
                 expanded: true,
@@ -374,6 +358,9 @@ impl Entry for Slot {
         }
     }
 
+    fn entry_id(&self) -> &EntryID {
+        &self.entry_id
+    }
     fn label_text(&self) -> &str {
         &self.short_name
     }
@@ -396,7 +383,7 @@ impl Entry for Slot {
 
         if self.expanded {
             if self.items.is_empty() {
-                self.generate(config);
+                self.inflate(config);
             }
 
             let style = ui.style();
@@ -519,13 +506,14 @@ impl<S: Entry> Panel<S> {
         false
     }
 
-    fn is_slot_visible(parent_level: u64, index: u64, config: &Config) -> bool {
-        parent_level != 0 || (index >= config.min_node && index <= config.max_node)
+    fn is_slot_visible(entry_id: &EntryID, config: &Config) -> bool {
+        let index = entry_id.last_slot_index().unwrap();
+        entry_id.level() != 1 || (index >= config.min_node && index <= config.max_node)
     }
 }
 
 impl<S: Entry> Entry for Panel<S> {
-    fn new(info: &EntryInfo, slot_id: EntryID, level: u64) -> Self {
+    fn new(info: &EntryInfo, entry_id: EntryID) -> Self {
         if let EntryInfo::Panel {
             short_name,
             long_name,
@@ -533,20 +521,20 @@ impl<S: Entry> Entry for Panel<S> {
             slots,
         } = info
         {
+            let expanded = entry_id.level() != 2;
             let summary = summary
                 .as_ref()
-                .map(|s| Summary::new(&s, slot_id.clone(), level + 1));
+                .map(|s| Summary::new(&s, entry_id.summary()));
             let slots = slots
                 .iter()
                 .enumerate()
-                .map(|(i, s)| S::new(s, slot_id.child(i as u64), level + 1))
+                .map(|(i, s)| S::new(s, entry_id.child(i as u64)))
                 .collect();
             Self {
-                slot_id,
+                entry_id,
                 short_name: short_name.to_owned(),
                 long_name: long_name.to_owned(),
-                level,
-                expanded: level != 2,
+                expanded,
                 summary,
                 slots,
             }
@@ -555,6 +543,9 @@ impl<S: Entry> Entry for Panel<S> {
         }
     }
 
+    fn entry_id(&self) -> &EntryID {
+        &self.entry_id
+    }
     fn label_text(&self) -> &str {
         &self.short_name
     }
@@ -576,9 +567,9 @@ impl<S: Entry> Entry for Panel<S> {
         }
 
         if self.expanded {
-            for (i, slot) in self.slots.iter_mut().enumerate() {
+            for slot in &mut self.slots {
                 // Apply visibility settings
-                if !Self::is_slot_visible(self.level, i as u64, config) {
+                if !Self::is_slot_visible(slot.entry_id(), config) {
                     continue;
                 }
 
@@ -605,9 +596,9 @@ impl<S: Entry> Entry for Panel<S> {
         }
 
         if self.expanded {
-            for (i, slot) in self.slots.iter().enumerate() {
+            for slot in &self.slots {
                 // Apply visibility settings
-                if !Self::is_slot_visible(self.level, i as u64, config) {
+                if !Self::is_slot_visible(slot.entry_id(), config) {
                     continue;
                 }
 
@@ -649,7 +640,7 @@ impl Window {
         let mut config = Config::new(data_source);
 
         Self {
-            panel: Panel::new(config.data_source.fetch_info(), EntryID::root(), 0),
+            panel: Panel::new(config.data_source.fetch_info(), EntryID::root()),
             index,
             kinds: config.data_source.fetch_info().kinds(),
             config,

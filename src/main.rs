@@ -5,7 +5,7 @@ use egui::{Color32, NumExt};
 use rand::Rng;
 
 use legion_prof_viewer::data::{
-    DataSource, EntryID, EntryInfo, SlotTile, SummaryTile, TileID, UtilPoint,
+    DataSource, EntryID, EntryInfo, Item, SlotTile, SummaryTile, TileID, UtilPoint,
 };
 use legion_prof_viewer::timestamp::{Interval, Timestamp};
 
@@ -117,13 +117,14 @@ impl DataSource for RandomDataSource {
         self.info.as_ref().unwrap()
     }
 
-    fn request_tiles(&mut self, entry: &EntryID, request_interval: Interval) -> Vec<TileID> {
+    fn request_tiles(&mut self, _entry_id: &EntryID, request_interval: Interval) -> Vec<TileID> {
+        // For now, always return the request in one tile
         let mut result = Vec::new();
         result.push(TileID(request_interval));
         result
     }
 
-    fn fetch_summary_tile(&mut self, entry: &EntryID, tile: &TileID) -> SummaryTile {
+    fn fetch_summary_tile(&mut self, _entry_id: &EntryID, _tile_id: &TileID) -> SummaryTile {
         const LEVELS: i32 = 8;
         let first = UtilPoint {
             time: self.interval().start,
@@ -141,7 +142,41 @@ impl DataSource for RandomDataSource {
         SummaryTile { utilization }
     }
 
-    fn fetch_slot_tile(&mut self, entry: &EntryID, tile: &TileID) -> SlotTile {
-        unimplemented!()
+    fn fetch_slot_tile(&mut self, entry_id: &EntryID, _tile_id: &TileID) -> SlotTile {
+        let entry = self.fetch_info().get(entry_id);
+
+        let max_rows = if let EntryInfo::Slot { max_rows, .. } = entry.unwrap() {
+            max_rows
+        } else {
+            panic!("trying to fetch tile on something that is not a slot")
+        };
+
+        let mut items = Vec::new();
+        for row in 0..*max_rows {
+            let mut row_items = Vec::new();
+            const N: u64 = 1000;
+            for i in 0..N {
+                let start = self.interval().lerp((i as f32 + 0.05) / (N as f32));
+                let stop = self.interval().lerp((i as f32 + 0.95) / (N as f32));
+
+                let color = match (row * N + i) % 7 {
+                    0 => Color32::BLUE,
+                    1 => Color32::GREEN,
+                    2 => Color32::RED,
+                    3 => Color32::YELLOW,
+                    4 => Color32::KHAKI,
+                    5 => Color32::DARK_GREEN,
+                    6 => Color32::DARK_BLUE,
+                    _ => Color32::WHITE,
+                };
+
+                row_items.push(Item {
+                    interval: Interval::new(start, stop),
+                    color,
+                });
+            }
+            items.push(row_items);
+        }
+        SlotTile { items }
     }
 }

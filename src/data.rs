@@ -4,21 +4,19 @@ use std::collections::BTreeSet;
 
 use crate::timestamp::{Interval, Timestamp};
 
+// We encode EntryID as i64 because it allows us to pack Summary into the
+// value -1. Users shouldn't need to know about this and interact through the
+// methods below, or via EntryIndex.
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct EntryID(Vec<u64>);
+pub struct EntryID(Vec<i64>);
 
-impl EntryID {
-    pub fn root() -> Self {
-        Self(Vec::new())
-    }
-    pub fn child(&self, index: u64) -> Self {
-        let mut result = self.clone();
-        result.0.push(index);
-        result
-    }
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub enum EntryIndex {
+    Summary,
+    Slot(u64),
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum EntryInfo {
     Panel {
         short_name: String,
@@ -42,6 +40,7 @@ pub struct UtilPoint {
     pub util: f32,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Item {
     pub interval: Interval,
     pub color: Color32,
@@ -50,10 +49,12 @@ pub struct Item {
 #[derive(Debug, Copy, Clone, Deserialize, Serialize)]
 pub struct TileID(pub Interval);
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SummaryTile {
     pub utilization: Vec<UtilPoint>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SlotTile {
     pub items: Vec<Vec<Item>>, // row -> [item]
 }
@@ -61,12 +62,80 @@ pub struct SlotTile {
 pub trait DataSource {
     fn interval(&mut self) -> Interval;
     fn fetch_info(&mut self) -> &EntryInfo;
-    fn request_tiles(&mut self, entry: &EntryID, request_interval: Interval) -> Vec<TileID>;
-    fn fetch_summary_tile(&mut self, entry: &EntryID, tile: &TileID) -> SummaryTile;
-    fn fetch_slot_tile(&mut self, entry: &EntryID, tile: &TileID) -> SlotTile;
+    fn request_tiles(&mut self, entry_id: &EntryID, request_interval: Interval) -> Vec<TileID>;
+    fn fetch_summary_tile(&mut self, entry_id: &EntryID, tile_id: &TileID) -> SummaryTile;
+    fn fetch_slot_tile(&mut self, entry_id: &EntryID, tile_id: &TileID) -> SlotTile;
+}
+
+impl EntryID {
+    pub fn root() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn summary(&self) -> Self {
+        let mut result = self.clone();
+        result.0.push(-1);
+        result
+    }
+
+    pub fn child(&self, index: u64) -> Self {
+        let mut result = self.clone();
+        result
+            .0
+            .push(index.try_into().expect("unable to fit in i64"));
+        result
+    }
+
+    pub fn level(&self) -> u64 {
+        self.0.len() as u64
+    }
+
+    pub fn last_slot_index(&self) -> Option<u64> {
+        let last = self.0.last()?;
+        (*last).try_into().ok()
+    }
+
+    pub fn slot_index(&self, level: u64) -> Option<u64> {
+        let last = self.0.get(level as usize)?;
+        (*last).try_into().ok()
+    }
+
+    pub fn last_index(&self) -> Option<EntryIndex> {
+        let last = self.0.last()?;
+        Some(
+            (*last)
+                .try_into()
+                .map_or(EntryIndex::Summary, |i| EntryIndex::Slot(i)),
+        )
+    }
+
+    pub fn index(&self, level: u64) -> Option<EntryIndex> {
+        let last = self.0.get(level as usize)?;
+        Some(
+            (*last)
+                .try_into()
+                .map_or(EntryIndex::Summary, |i| EntryIndex::Slot(i)),
+        )
+    }
 }
 
 impl EntryInfo {
+    pub fn get(&self, entry_id: &EntryID) -> Option<&EntryInfo> {
+        let mut result = self;
+        for i in 0..entry_id.level() {
+            match (entry_id.index(i)?, result) {
+                (EntryIndex::Summary, EntryInfo::Panel { summary, .. }) => {
+                    return summary.as_deref();
+                }
+                (EntryIndex::Slot(j), EntryInfo::Panel { slots, .. }) => {
+                    result = slots.get(j as usize)?;
+                }
+                _ => panic!("EntryID and EntryInfo do not match"),
+            }
+        }
+        Some(result)
+    }
+
     pub fn nodes(&self) -> u64 {
         if let EntryInfo::Panel { slots, .. } = self {
             slots.len() as u64
@@ -74,6 +143,7 @@ impl EntryInfo {
             unreachable!()
         }
     }
+
     pub fn kinds(&self) -> Vec<String> {
         if let EntryInfo::Panel { slots: nodes, .. } = self {
             let mut result = Vec::new();
