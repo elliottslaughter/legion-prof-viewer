@@ -95,6 +95,9 @@ impl Interval {
     pub fn new(start: Timestamp, stop: Timestamp) -> Self {
         Self { start, stop }
     }
+    pub fn duration_ns(&self) -> i64 {
+        self.stop.0 - self.start.0
+    }
     pub fn union(self, other: Interval) -> Self {
         Self {
             start: Timestamp(self.start.0.min(other.start.0)),
@@ -103,11 +106,11 @@ impl Interval {
     }
     // Convert a timestamp into [0,1] relative space
     pub fn unlerp(self, time: Timestamp) -> f32 {
-        (time.0 - self.start.0) as f32 / ((self.stop.0 - self.start.0) as f32)
+        (time.0 - self.start.0) as f32 / (self.duration_ns() as f32)
     }
     // Convert [0,1] relative space into a timestamp
     pub fn lerp(self, value: f32) -> Timestamp {
-        Timestamp((value * ((self.stop.0 - self.start.0) as f32)).round() as i64 + self.start.0)
+        Timestamp((value * (self.duration_ns() as f32)).round() as i64 + self.start.0)
     }
     pub fn has_intersection(self, other: Interval) -> bool {
         !(other.stop < self.start || other.start > self.stop)

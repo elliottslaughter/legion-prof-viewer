@@ -44,6 +44,8 @@ impl RandomDataSource {
     }
 }
 
+const TILES: i64 = 3;
+
 impl DataSource for RandomDataSource {
     fn interval(&mut self) -> Interval {
         if let Some(interval) = self.interval {
@@ -118,18 +120,25 @@ impl DataSource for RandomDataSource {
     }
 
     fn request_tiles(&mut self, _entry_id: &EntryID, request_interval: Interval) -> Vec<TileID> {
-        // For now, always return the request in one tile
-        vec![TileID(request_interval)]
+        let duration = request_interval.duration_ns();
+
+        let mut tiles = Vec::new();
+        for i in 0..TILES {
+            let start = Timestamp(i * duration / TILES + request_interval.start.0);
+            let stop = Timestamp((i + 1) * duration / TILES + request_interval.start.0 - 1);
+            tiles.push(TileID(Interval::new(start, stop)));
+        }
+        tiles
     }
 
     fn fetch_summary_tile(&mut self, _entry_id: &EntryID, tile_id: TileID) -> SummaryTile {
         const LEVELS: i32 = 8;
         let first = UtilPoint {
-            time: self.interval().start,
+            time: tile_id.0.start,
             util: self.rng.gen(),
         };
         let last = UtilPoint {
-            time: self.interval().stop,
+            time: tile_id.0.stop,
             util: self.rng.gen(),
         };
         let mut utilization = Vec::new();
@@ -155,10 +164,10 @@ impl DataSource for RandomDataSource {
         let mut items = Vec::new();
         for row in 0..*max_rows {
             let mut row_items = Vec::new();
-            const N: u64 = 1000;
+            const N: u64 = 1000 / (TILES as u64);
             for i in 0..N {
-                let start = self.interval().lerp((i as f32 + 0.05) / (N as f32));
-                let stop = self.interval().lerp((i as f32 + 0.95) / (N as f32));
+                let start = tile_id.0.lerp((i as f32 + 0.05) / (N as f32));
+                let stop = tile_id.0.lerp((i as f32 + 0.95) / (N as f32));
 
                 let color = match (row * N + i) % 7 {
                     0 => Color32::BLUE,
