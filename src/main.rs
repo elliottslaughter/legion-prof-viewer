@@ -11,8 +11,8 @@ use legion_prof_viewer::timestamp::{Interval, Timestamp};
 
 fn main() {
     legion_prof_viewer::app::start(
-        Box::new(RandomDataSource::default()),
-        Some(Box::new(RandomDataSource::default())),
+        Box::<RandomDataSource>::default(),
+        Some(Box::<RandomDataSource>::default()),
     );
 }
 
