@@ -137,7 +137,10 @@ impl DataSource for RandomDataSource {
         self.generate_point(first, last, LEVELS, LEVELS, &mut utilization);
         utilization.push(last);
 
-        SummaryTile { tile_id, utilization }
+        SummaryTile {
+            tile_id,
+            utilization,
+        }
     }
 
     fn fetch_slot_tile(&mut self, entry_id: &EntryID, tile_id: TileID) -> SlotTile {
