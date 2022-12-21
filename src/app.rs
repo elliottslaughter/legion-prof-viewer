@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
-use crate::data::{DataSource, EntryID, EntryInfo, Item, UtilPoint};
+use crate::data::{DataSource, EntryID, EntryInfo, SlotTile, UtilPoint};
 use crate::timestamp::Interval;
 
 /// Overview:
@@ -48,7 +48,7 @@ struct Slot {
     long_name: String,
     expanded: bool,
     max_rows: u64,
-    items: Vec<Vec<Item>>, // row -> [item]
+    tiles: Vec<SlotTile>,
 }
 
 struct Panel<S: Entry> {
@@ -331,9 +331,71 @@ impl Slot {
             .request_tiles(&self.entry_id, config.interval);
         for tile_id in tiles {
             let tile = config.data_source.fetch_slot_tile(&self.entry_id, tile_id);
-            // FIXME: Need to accumulate, not overwrite
-            self.items = tile.items;
+            self.tiles.push(tile);
         }
+    }
+
+    fn render_tile(
+        tile: &SlotTile,
+        rows: u64,
+        mut hover_pos: Option<Pos2>,
+        ui: &mut egui::Ui,
+        rect: Rect,
+        viewport: Rect,
+        cx: &mut Context,
+    ) -> Option<Pos2> {
+        if !cx.view_interval.has_intersection(tile.tile_id.0) {
+            return hover_pos;
+        }
+
+        for (row, row_items) in tile.items.iter().enumerate() {
+            // Need to reverse the rows because we're working in screen space
+            let irow = tile.items.len() /* FIXME: rows */ - row - 1;
+
+            // We want to do this first on rows, so that we can cut the
+            // entire row if we don't need it
+
+            // Compute bounds for the whole row
+            let row_min = rect.lerp(Vec2::new(0.0, (irow as f32 + 0.05) / rows as f32));
+            let row_max = rect.lerp(Vec2::new(1.0, (irow as f32 + 0.95) / rows as f32));
+
+            // Cull if out of bounds
+            // Note: need to shift by rect.min to get to viewport space
+            if row_max.y - rect.min.y < viewport.min.y {
+                break;
+            } else if row_min.y - rect.min.y > viewport.max.y {
+                continue;
+            }
+
+            // Check if mouse is hovering over this row
+            let row_rect = Rect::from_min_max(row_min, row_max);
+            let row_hover = hover_pos.map_or(false, |h| row_rect.contains(h));
+
+            // Now handle the items
+            for item in row_items {
+                if !cx.view_interval.has_intersection(item.interval) {
+                    continue;
+                }
+
+                let start = cx.view_interval.unlerp(item.interval.start).at_least(0.0);
+                let stop = cx.view_interval.unlerp(item.interval.stop).at_most(1.0);
+                let min = rect.lerp(Vec2::new(start, (irow as f32 + 0.05) / rows as f32));
+                let max = rect.lerp(Vec2::new(stop, (irow as f32 + 0.95) / rows as f32));
+
+                let item_rect = Rect::from_min_max(min, max);
+                if row_hover && hover_pos.map_or(false, |h| item_rect.contains(h)) {
+                    hover_pos = None;
+
+                    ui.show_tooltip(
+                        "task_tooltip",
+                        &item_rect,
+                        format!("Item: {} Row: {}", item.interval, row),
+                    );
+                }
+                ui.painter().rect(item_rect, 0.0, item.color, Stroke::NONE);
+            }
+        }
+        hover_pos
     }
 }
 
@@ -351,7 +413,7 @@ impl Entry for Slot {
                 long_name: long_name.to_owned(),
                 expanded: true,
                 max_rows: *max_rows,
-                items: Vec::new(),
+                tiles: Vec::new(),
             }
         } else {
             unreachable!()
@@ -382,7 +444,7 @@ impl Entry for Slot {
         let mut hover_pos = response.hover_pos(); // where is the mouse hovering?
 
         if self.expanded {
-            if self.items.is_empty() {
+            if self.tiles.is_empty() {
                 self.inflate(config);
             }
 
@@ -392,52 +454,8 @@ impl Entry for Slot {
                 .rect(rect, 0.0, visuals.bg_fill, visuals.bg_stroke);
 
             let rows = self.rows();
-            for (row, row_items) in self.items.iter().enumerate() {
-                // Need to reverse the rows because we're working in screen space
-                let irow = self.items.len() - row - 1;
-
-                // We want to do this first on rows, so that we can cut the
-                // entire row if we don't need it
-
-                // Compute bounds for the whole row
-                let row_min = rect.lerp(Vec2::new(0.0, (irow as f32 + 0.05) / rows as f32));
-                let row_max = rect.lerp(Vec2::new(1.0, (irow as f32 + 0.95) / rows as f32));
-
-                // Cull if out of bounds
-                // Note: need to shift by rect.min to get to viewport space
-                if row_max.y - rect.min.y < viewport.min.y {
-                    break;
-                } else if row_min.y - rect.min.y > viewport.max.y {
-                    continue;
-                }
-
-                // Check if mouse is hovering over this row
-                let row_rect = Rect::from_min_max(row_min, row_max);
-                let row_hover = hover_pos.map_or(false, |h| row_rect.contains(h));
-
-                // Now handle the items
-                for item in row_items {
-                    if !cx.view_interval.has_intersection(item.interval) {
-                        continue;
-                    }
-
-                    let start = cx.view_interval.unlerp(item.interval.start).at_least(0.0);
-                    let stop = cx.view_interval.unlerp(item.interval.stop).at_most(1.0);
-                    let min = rect.lerp(Vec2::new(start, (irow as f32 + 0.05) / rows as f32));
-                    let max = rect.lerp(Vec2::new(stop, (irow as f32 + 0.95) / rows as f32));
-
-                    let item_rect = Rect::from_min_max(min, max);
-                    if row_hover && hover_pos.map_or(false, |h| item_rect.contains(h)) {
-                        hover_pos = None;
-
-                        ui.show_tooltip(
-                            "task_tooltip",
-                            &item_rect,
-                            format!("Item: {} Row: {}", item.interval, row),
-                        );
-                    }
-                    ui.painter().rect(item_rect, 0.0, item.color, Stroke::NONE);
-                }
+            for tile in &self.tiles {
+                hover_pos = Self::render_tile(tile, rows, hover_pos, ui, rect, viewport, cx);
             }
         }
     }
