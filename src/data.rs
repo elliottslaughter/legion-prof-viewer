@@ -48,7 +48,7 @@ pub struct Item {
 }
 
 #[derive(Debug, Copy, Clone, Deserialize, Serialize)]
-pub struct TileID(Interval);
+pub struct TileID(pub Interval);
 
 pub struct SummaryTile {
     pub utilization: Vec<UtilPoint>,
@@ -75,21 +75,26 @@ impl EntryInfo {
         }
     }
     pub fn kinds(&self) -> Vec<String> {
-        if let EntryInfo::Panel { slots, .. } = self {
+        if let EntryInfo::Panel { slots: nodes, .. } = self {
             let mut result = Vec::new();
             let mut set = BTreeSet::new();
-            for slot in slots {
-                if let EntryInfo::Panel { long_name, .. } = slot {
-                    if set.insert(long_name) {
-                        result.push(long_name.clone());
+            for node in nodes {
+                if let EntryInfo::Panel { slots: kinds, .. } = node {
+                    for kind in kinds {
+                        if let EntryInfo::Panel { short_name, .. } = kind {
+                            if set.insert(short_name) {
+                                result.push(short_name.clone());
+                            }
+                        } else {
+                            unreachable!();
+                        }
                     }
                 } else {
                     unreachable!();
                 }
             }
-            result
-        } else {
-            unreachable!()
+            return result;
         }
+        unreachable!()
     }
 }

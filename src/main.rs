@@ -118,7 +118,9 @@ impl DataSource for RandomDataSource {
     }
 
     fn request_tiles(&mut self, entry: &EntryID, request_interval: Interval) -> Vec<TileID> {
-        unimplemented!()
+        let mut result = Vec::new();
+        result.push(TileID(request_interval));
+        result
     }
 
     fn fetch_summary_tile(&mut self, entry: &EntryID, tile: &TileID) -> SummaryTile {
