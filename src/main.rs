@@ -10,7 +10,10 @@ use legion_prof_viewer::data::{
 use legion_prof_viewer::timestamp::{Interval, Timestamp};
 
 fn main() {
-    legion_prof_viewer::app::start(Box::new(RandomDataSource::default()));
+    legion_prof_viewer::app::start(
+        Box::new(RandomDataSource::default()),
+        Some(Box::new(RandomDataSource::default())),
+    );
 }
 
 #[derive(Default)]

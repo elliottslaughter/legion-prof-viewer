@@ -105,6 +105,9 @@ struct ProfApp {
     #[serde(skip)]
     windows: Vec<Window>,
 
+    #[serde(skip)]
+    extra_source: Option<Box<dyn DataSource>>,
+
     cx: Context,
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -739,7 +742,11 @@ impl Window {
 
 impl ProfApp {
     /// Called once before the first frame.
-    pub fn new(cc: &eframe::CreationContext<'_>, data_source: Box<dyn DataSource>) -> Self {
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        data_source: Box<dyn DataSource>,
+        extra_source: Option<Box<dyn DataSource>>,
+    ) -> Self {
         // This is also where you can customized the look at feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
 
@@ -756,6 +763,8 @@ impl ProfApp {
         let window = result.windows.last().unwrap();
         result.cx.total_interval = window.config.interval;
         result.cx.view_interval = result.cx.total_interval;
+
+        result.extra_source = extra_source;
 
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -929,22 +938,17 @@ impl eframe::App for ProfApp {
                 });
             }
 
-            // if ui.button("Add Another Profile").clicked() {
-            //     let mut index = 0;
-            //     if let Some(last) = windows.last() {
-            //         index = last.index + 1;
-            //     }
-            //     windows.push(Window::default());
-            //     let window = windows.last_mut().unwrap();
-            //     window.index = index;
-            //     // Need to at least pick the time bounds up front
-            //     window.config.interval = Interval::new(
-            //         Timestamp(0),
-            //         Timestamp(cx.rng.gen_range(1_000_000..2_000_000)),
-            //     );
-            //     cx.total_interval = cx.total_interval.union(window.config.interval);
-            //     cx.view_interval = cx.total_interval;
-            // }
+            if self.extra_source.is_some() && ui.button("Add Another Profile").clicked() {
+                let extra = self.extra_source.take().unwrap();
+                let mut index = 0;
+                if let Some(last) = windows.last() {
+                    index = last.index + 1;
+                }
+                windows.push(Window::new(extra, index));
+                let window = windows.last_mut().unwrap();
+                cx.total_interval = cx.total_interval.union(window.config.interval);
+                cx.view_interval = cx.total_interval;
+            }
 
             if ui.button("Reset Zoom Level").clicked() {
                 cx.view_interval = cx.total_interval;
@@ -1066,7 +1070,7 @@ impl UiExtra for egui::Ui {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn start(data_source: Box<dyn DataSource>) {
+pub fn start(data_source: Box<dyn DataSource>, extra_source: Option<Box<dyn DataSource>>) {
     // Log to stdout (if you run with `RUST_LOG=debug`).
     tracing_subscriber::fmt::init();
 
@@ -1074,12 +1078,12 @@ pub fn start(data_source: Box<dyn DataSource>) {
     eframe::run_native(
         "Legion Prof",
         native_options,
-        Box::new(|cc| Box::new(ProfApp::new(cc, data_source))),
+        Box::new(|cc| Box::new(ProfApp::new(cc, data_source, extra_source))),
     );
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn start(data_source: Box<dyn DataSource>) {
+pub fn start(data_source: Box<dyn DataSource>, extra_source: Option<Box<dyn DataSource>>) {
     // Make sure panics are logged using `console.error`.
     console_error_panic_hook::set_once();
 
@@ -1092,7 +1096,7 @@ pub fn start(data_source: Box<dyn DataSource>) {
         eframe::start_web(
             "the_canvas_id", // hardcode it
             web_options,
-            Box::new(|cc| Box::new(ProfApp::new(cc, data_source))),
+            Box::new(|cc| Box::new(ProfApp::new(cc, data_source, extra_source))),
         )
         .await
         .expect("failed to start eframe");
