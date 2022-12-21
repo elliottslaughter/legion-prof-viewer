@@ -15,6 +15,9 @@ Tech demo for potential future Legion Prof interface.
 - [x] There is a bug when you move the cursor near the right edge of the screen, the scroll bar gets pushed away
 - [x] Timestamps on the vertical cursor
 - [x] Horizontal zoom
+- [x] Fetch from data source
+- [ ] Render data in tiles
+- [ ] Asynchronous data fetch
 - [ ] Horizontal pan
 - [ ] Vertical zoom
 - [ ] Search (with load all data option to get better search results)
