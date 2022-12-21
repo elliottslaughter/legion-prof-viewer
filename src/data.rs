@@ -1,4 +1,4 @@
-use egui::Color32;
+pub use egui::Color32;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 

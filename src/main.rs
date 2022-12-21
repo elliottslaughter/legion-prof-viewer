@@ -88,7 +88,6 @@ impl DataSource for RandomDataSource {
                 let mut proc_slots = Vec::new();
                 for proc in 0..PROCS {
                     let rows: u64 = self.rng.gen_range(0..64);
-                    // Leave items empty, we'll generate it later
                     proc_slots.push(EntryInfo::Slot {
                         short_name: format!(
                             "{}{}",
