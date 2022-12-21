@@ -7,7 +7,7 @@ use crate::timestamp::{Interval, Timestamp};
 // We encode EntryID as i64 because it allows us to pack Summary into the
 // value -1. Users shouldn't need to know about this and interact through the
 // methods below, or via EntryIndex.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct EntryID(Vec<i64>);
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
