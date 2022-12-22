@@ -22,6 +22,7 @@ struct RandomDataSource {
     info: Option<EntryInfo>,
     interval: Option<Interval>,
     summary_cache: BTreeMap<EntryID, Vec<UtilPoint>>,
+    slot_cache: BTreeMap<EntryID, Vec<Vec<Item>>>,
     rng: rand::rngs::ThreadRng,
 }
 
@@ -68,9 +69,49 @@ impl RandomDataSource {
         }
         self.summary_cache.get(entry_id).unwrap()
     }
-}
 
-const TILES: i64 = 3;
+    fn generate_slot(&mut self, entry_id: &EntryID) -> &Vec<Vec<Item>> {
+        if !self.slot_cache.contains_key(entry_id) {
+            let entry = self.fetch_info().get(entry_id);
+
+            let max_rows = if let EntryInfo::Slot { max_rows, .. } = entry.unwrap() {
+                max_rows
+            } else {
+                panic!("trying to fetch tile on something that is not a slot")
+            };
+
+            let mut items = Vec::new();
+            for row in 0..*max_rows {
+                let mut row_items = Vec::new();
+                const N: u64 = 1000;
+                for i in 0..N {
+                    let start = self.interval().lerp((i as f32 + 0.05) / (N as f32));
+                    let stop = self.interval().lerp((i as f32 + 0.95) / (N as f32));
+
+                    let color = match (row * N + i) % 7 {
+                        0 => Color32::BLUE,
+                        1 => Color32::GREEN,
+                        2 => Color32::RED,
+                        3 => Color32::YELLOW,
+                        4 => Color32::KHAKI,
+                        5 => Color32::DARK_GREEN,
+                        6 => Color32::DARK_BLUE,
+                        _ => Color32::WHITE,
+                    };
+
+                    row_items.push(Item {
+                        interval: Interval::new(start, stop),
+                        color,
+                    });
+                }
+                items.push(row_items);
+            }
+
+            self.slot_cache.insert(entry_id.clone(), items);
+        }
+        self.slot_cache.get(entry_id).unwrap()
+    }
+}
 
 impl DataSource for RandomDataSource {
     fn interval(&mut self) -> Interval {
@@ -147,12 +188,16 @@ impl DataSource for RandomDataSource {
     fn request_tiles(&mut self, _entry_id: &EntryID, request_interval: Interval) -> Vec<TileID> {
         let duration = request_interval.duration_ns();
 
+        const TILES: i64 = 3;
+
         let mut tiles = Vec::new();
         for i in 0..TILES {
             let start = Timestamp(i * duration / TILES + request_interval.start.0);
-            let stop = Timestamp((i + 1) * duration / TILES + request_interval.start.0 - 1);
+            let last = if i == TILES - 1 { 0 } else { 1 };
+            let stop = Timestamp((i + 1) * duration / TILES + request_interval.start.0 - last);
             tiles.push(TileID(Interval::new(start, stop)));
         }
+        println!("requested tiles: {:?}", tiles);
         tiles
     }
 
@@ -200,40 +245,26 @@ impl DataSource for RandomDataSource {
     }
 
     fn fetch_slot_tile(&mut self, entry_id: &EntryID, tile_id: TileID) -> SlotTile {
-        let entry = self.fetch_info().get(entry_id);
+        let items = self.generate_slot(entry_id);
 
-        let max_rows = if let EntryInfo::Slot { max_rows, .. } = entry.unwrap() {
-            max_rows
-        } else {
-            panic!("trying to fetch tile on something that is not a slot")
-        };
-
-        let mut items = Vec::new();
-        for row in 0..*max_rows {
-            let mut row_items = Vec::new();
-            const N: u64 = 1000 / (TILES as u64);
-            for i in 0..N {
-                let start = tile_id.0.lerp((i as f32 + 0.05) / (N as f32));
-                let stop = tile_id.0.lerp((i as f32 + 0.95) / (N as f32));
-
-                let color = match (row * N + i) % 7 {
-                    0 => Color32::BLUE,
-                    1 => Color32::GREEN,
-                    2 => Color32::RED,
-                    3 => Color32::YELLOW,
-                    4 => Color32::KHAKI,
-                    5 => Color32::DARK_GREEN,
-                    6 => Color32::DARK_BLUE,
-                    _ => Color32::WHITE,
-                };
-
-                row_items.push(Item {
-                    interval: Interval::new(start, stop),
-                    color,
-                });
+        let mut slot_items = Vec::new();
+        for row in items {
+            let mut slot_row = Vec::new();
+            for item in row {
+                // When the item straddles a tile boundary, it has to be
+                // sliced to fit
+                if tile_id.0.overlaps(item.interval) {
+                    let mut new_item = item.clone();
+                    new_item.interval = new_item.interval.intersection(tile_id.0);
+                    slot_row.push(new_item);
+                }
             }
-            items.push(row_items);
+            slot_items.push(slot_row);
         }
-        SlotTile { tile_id, items }
+
+        SlotTile {
+            tile_id,
+            items: slot_items,
+        }
     }
 }

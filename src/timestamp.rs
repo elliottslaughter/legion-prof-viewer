@@ -71,7 +71,7 @@ impl fmt::Display for Interval {
                 start_ns,
                 stop_ns,
                 unit_name,
-                Timestamp(stop_ns - start_ns)
+                Timestamp(stop_ns - start_ns + 1)
             );
         }
         let start_units = start_ns / divisor;
@@ -86,7 +86,7 @@ impl fmt::Display for Interval {
             stop_units,
             stop_remainder,
             unit_name,
-            Timestamp(stop_ns - start_ns)
+            Timestamp(stop_ns - start_ns + 1)
         )
     }
 }
@@ -96,7 +96,7 @@ impl Interval {
         Self { start, stop }
     }
     pub fn duration_ns(self) -> i64 {
-        self.stop.0 - self.start.0
+        self.stop.0 - self.start.0 + 1
     }
     pub fn contains(self, point: Timestamp) -> bool {
         point >= self.start && point <= self.stop

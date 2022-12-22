@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 use crate::data::{DataSource, EntryID, EntryInfo, SlotTile, UtilPoint};
-use crate::timestamp::Interval;
+use crate::timestamp::{Interval, Timestamp};
 
 /// Overview:
 ///   ProfApp -> Context, Window *
@@ -38,8 +38,8 @@ use crate::timestamp::Interval;
 
 struct Summary {
     entry_id: EntryID,
-    utilization: Vec<UtilPoint>,
     color: Color32,
+    utilization: Vec<UtilPoint>,
     last_view_interval: Option<Interval>,
 }
 
@@ -50,6 +50,7 @@ struct Slot {
     expanded: bool,
     max_rows: u64,
     tiles: Vec<SlotTile>,
+    last_view_interval: Option<Interval>,
 }
 
 struct Panel<S: Entry> {
@@ -197,8 +198,8 @@ impl Entry for Summary {
         if let EntryInfo::Summary { color } = info {
             Self {
                 entry_id,
-                utilization: Vec::new(),
                 color: *color,
+                utilization: Vec::new(),
                 last_view_interval: None,
             }
         } else {
@@ -340,10 +341,14 @@ impl Slot {
         }
     }
 
-    fn inflate(&mut self, config: &mut Config) {
-        let tiles = config
-            .data_source
-            .request_tiles(&self.entry_id, config.interval);
+    fn clear(&mut self) {
+        println!("clearing slot tiles");
+        self.tiles.clear();
+    }
+
+    fn inflate(&mut self, config: &mut Config, cx: &Context) {
+        let interval = config.interval.intersection(cx.view_interval);
+        let tiles = config.data_source.request_tiles(&self.entry_id, interval);
         for tile_id in tiles {
             let tile = config.data_source.fetch_slot_tile(&self.entry_id, tile_id);
             self.tiles.push(tile);
@@ -393,7 +398,10 @@ impl Slot {
                 }
 
                 let start = cx.view_interval.unlerp(item.interval.start).at_least(0.0);
-                let stop = cx.view_interval.unlerp(item.interval.stop).at_most(1.0);
+                let stop = cx
+                    .view_interval
+                    .unlerp(Timestamp(item.interval.stop.0 + 1))
+                    .at_most(1.0);
                 let min = rect.lerp(Vec2::new(start, (irow as f32 + 0.05) / rows as f32));
                 let max = rect.lerp(Vec2::new(stop, (irow as f32 + 0.95) / rows as f32));
 
@@ -429,6 +437,7 @@ impl Entry for Slot {
                 expanded: true,
                 max_rows: *max_rows,
                 tiles: Vec::new(),
+                last_view_interval: None,
             }
         } else {
             unreachable!()
@@ -459,8 +468,15 @@ impl Entry for Slot {
         let mut hover_pos = response.hover_pos(); // where is the mouse hovering?
 
         if self.expanded {
+            if self
+                .last_view_interval
+                .map_or(true, |i| i != cx.view_interval)
+            {
+                self.clear();
+            }
+            self.last_view_interval = Some(cx.view_interval);
             if self.tiles.is_empty() {
-                self.inflate(config);
+                self.inflate(config, cx);
             }
 
             let style = ui.style();
