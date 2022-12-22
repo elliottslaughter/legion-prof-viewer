@@ -3,6 +3,7 @@
 
 use egui::{Color32, NumExt};
 use rand::Rng;
+use std::collections::BTreeMap;
 
 use legion_prof_viewer::data::{
     DataSource, EntryID, EntryInfo, Item, SlotTile, SummaryTile, TileID, UtilPoint,
@@ -20,6 +21,7 @@ fn main() {
 struct RandomDataSource {
     info: Option<EntryInfo>,
     interval: Option<Interval>,
+    summary_cache: BTreeMap<EntryID, Vec<UtilPoint>>,
     rng: rand::rngs::ThreadRng,
 }
 
@@ -44,6 +46,27 @@ impl RandomDataSource {
         if level > 0 {
             self.generate_point(point, last, level - 1, max_level, utilization);
         }
+    }
+
+    fn generate_summary(&mut self, entry_id: &EntryID) -> &Vec<UtilPoint> {
+        if !self.summary_cache.contains_key(entry_id) {
+            const LEVELS: i32 = 8;
+            let first = UtilPoint {
+                time: self.interval().start,
+                util: self.rng.gen(),
+            };
+            let last = UtilPoint {
+                time: self.interval().stop,
+                util: self.rng.gen(),
+            };
+            let mut utilization = Vec::new();
+            utilization.push(first);
+            self.generate_point(first, last, LEVELS, LEVELS, &mut utilization);
+            utilization.push(last);
+
+            self.summary_cache.insert(entry_id.clone(), utilization);
+        }
+        self.summary_cache.get(entry_id).unwrap()
     }
 }
 
@@ -133,24 +156,46 @@ impl DataSource for RandomDataSource {
         tiles
     }
 
-    fn fetch_summary_tile(&mut self, _entry_id: &EntryID, tile_id: TileID) -> SummaryTile {
-        const LEVELS: i32 = 8;
-        let first = UtilPoint {
-            time: tile_id.0.start,
-            util: self.rng.gen(),
-        };
-        let last = UtilPoint {
-            time: tile_id.0.stop,
-            util: self.rng.gen(),
-        };
-        let mut utilization = Vec::new();
-        utilization.push(first);
-        self.generate_point(first, last, LEVELS, LEVELS, &mut utilization);
-        utilization.push(last);
+    fn fetch_summary_tile(&mut self, entry_id: &EntryID, tile_id: TileID) -> SummaryTile {
+        let utilization = self.generate_summary(entry_id);
 
+        let mut tile_utilization = Vec::new();
+        let mut last_point = None;
+        for point in utilization {
+            let UtilPoint { time, util } = *point;
+            if let Some(last_point) = last_point {
+                let UtilPoint {
+                    time: last_time,
+                    util: last_util,
+                } = last_point;
+
+                let last_interval = Interval::new(last_time, time);
+                if last_interval.contains(tile_id.0.start) {
+                    let relative = last_interval.unlerp(tile_id.0.start);
+                    let start_util = (last_util - util) * relative + last_util;
+                    tile_utilization.push(UtilPoint {
+                        time: tile_id.0.start,
+                        util: start_util,
+                    });
+                }
+                if tile_id.0.contains(time) {
+                    tile_utilization.push(*point);
+                }
+                if last_interval.contains(tile_id.0.stop) {
+                    let relative = last_interval.unlerp(tile_id.0.stop);
+                    let stop_util = (last_util - util) * relative + last_util;
+                    tile_utilization.push(UtilPoint {
+                        time: tile_id.0.stop,
+                        util: stop_util,
+                    });
+                }
+            }
+
+            last_point = Some(*point);
+        }
         SummaryTile {
             tile_id,
-            utilization,
+            utilization: tile_utilization,
         }
     }
 

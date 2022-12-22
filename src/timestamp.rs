@@ -95,8 +95,11 @@ impl Interval {
     pub fn new(start: Timestamp, stop: Timestamp) -> Self {
         Self { start, stop }
     }
-    pub fn duration_ns(&self) -> i64 {
+    pub fn duration_ns(self) -> i64 {
         self.stop.0 - self.start.0
+    }
+    pub fn contains(self, point: Timestamp) -> bool {
+        point >= self.start && point <= self.stop
     }
     pub fn union(self, other: Interval) -> Self {
         Self {

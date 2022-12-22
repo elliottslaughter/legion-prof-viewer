@@ -90,6 +90,7 @@ struct Context {
 
     // Visible time range
     view_interval: Interval,
+    view_interval_changed: bool,
 
     drag_origin: Option<Pos2>,
 
@@ -175,6 +176,10 @@ trait Entry {
 }
 
 impl Summary {
+    fn clear(&mut self) {
+        self.utilization.clear();
+    }
+
     fn inflate(&mut self, config: &mut Config) {
         let tiles = config
             .data_source
@@ -225,6 +230,9 @@ impl Entry for Summary {
         let response = ui.allocate_rect(rect, egui::Sense::hover());
         let hover_pos = response.hover_pos(); // where is the mouse hovering?
 
+        if cx.view_interval_changed {
+            self.clear();
+        }
         if self.utilization.is_empty() {
             self.inflate(config);
         }
@@ -763,6 +771,7 @@ impl ProfApp {
         let window = result.windows.last().unwrap();
         result.cx.total_interval = window.config.interval;
         result.cx.view_interval = result.cx.total_interval;
+        result.cx.view_interval_changed = true;
 
         result.extra_source = extra_source;
 
@@ -823,6 +832,7 @@ impl ProfApp {
                 const MIN_DRAG_DISTANCE: f32 = 4.0;
                 if max - min > MIN_DRAG_DISTANCE {
                     cx.view_interval = interval;
+                    cx.view_interval_changed = true;
                 }
 
                 cx.drag_origin = None;
@@ -899,6 +909,9 @@ impl eframe::App for ProfApp {
             ..
         } = self;
 
+        // Clear state for this frame
+        cx.view_interval_changed = false;
+
         let mut _fps = 0.0;
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -948,10 +961,12 @@ impl eframe::App for ProfApp {
                 let window = windows.last_mut().unwrap();
                 cx.total_interval = cx.total_interval.union(window.config.interval);
                 cx.view_interval = cx.total_interval;
+                cx.view_interval_changed = true;
             }
 
             if ui.button("Reset Zoom Level").clicked() {
                 cx.view_interval = cx.total_interval;
+                cx.view_interval_changed = true;
             }
 
             egui::Frame::group(ui.style()).show(ui, |ui| {
