@@ -180,10 +180,9 @@ impl Summary {
         self.utilization.clear();
     }
 
-    fn inflate(&mut self, config: &mut Config) {
-        let tiles = config
-            .data_source
-            .request_tiles(&self.entry_id, config.interval);
+    fn inflate(&mut self, config: &mut Config, cx: &Context) {
+        let interval = config.interval.intersection(cx.view_interval);
+        let tiles = config.data_source.request_tiles(&self.entry_id, interval);
         for tile_id in tiles {
             let tile = config
                 .data_source
@@ -231,12 +230,15 @@ impl Entry for Summary {
         let response = ui.allocate_rect(rect, egui::Sense::hover());
         let hover_pos = response.hover_pos(); // where is the mouse hovering?
 
-        if self.last_view_interval.map_or(true, |i| i != cx.view_interval) {
+        if self
+            .last_view_interval
+            .map_or(true, |i| i != cx.view_interval)
+        {
             self.clear();
         }
         self.last_view_interval = Some(cx.view_interval);
         if self.utilization.is_empty() {
-            self.inflate(config);
+            self.inflate(config, cx);
         }
 
         let style = ui.style();
@@ -273,7 +275,7 @@ impl Entry for Summary {
                 let last_util = last_util.unwrap();
                 if cx
                     .view_interval
-                    .has_intersection(Interval::new(last_util.time, util.time))
+                    .overlaps(Interval::new(last_util.time, util.time))
                 {
                     // Interpolate when out of view
                     if last.x < rect.min.x {
@@ -357,7 +359,7 @@ impl Slot {
         viewport: Rect,
         cx: &mut Context,
     ) -> Option<Pos2> {
-        if !cx.view_interval.has_intersection(tile.tile_id.0) {
+        if !cx.view_interval.overlaps(tile.tile_id.0) {
             return hover_pos;
         }
 
@@ -386,7 +388,7 @@ impl Slot {
 
             // Now handle the items
             for item in row_items {
-                if !cx.view_interval.has_intersection(item.interval) {
+                if !cx.view_interval.overlaps(item.interval) {
                     continue;
                 }
 

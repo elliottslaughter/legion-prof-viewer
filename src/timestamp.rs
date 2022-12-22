@@ -101,6 +101,15 @@ impl Interval {
     pub fn contains(self, point: Timestamp) -> bool {
         point >= self.start && point <= self.stop
     }
+    pub fn overlaps(self, other: Interval) -> bool {
+        !(other.stop < self.start || other.start > self.stop)
+    }
+    pub fn intersection(self, other: Interval) -> Self {
+        Self {
+            start: Timestamp(self.start.0.max(other.start.0)),
+            stop: Timestamp(self.stop.0.min(other.stop.0)),
+        }
+    }
     pub fn union(self, other: Interval) -> Self {
         Self {
             start: Timestamp(self.start.0.min(other.start.0)),
@@ -114,8 +123,5 @@ impl Interval {
     // Convert [0,1] relative space into a timestamp
     pub fn lerp(self, value: f32) -> Timestamp {
         Timestamp((value * (self.duration_ns() as f32)).round() as i64 + self.start.0)
-    }
-    pub fn has_intersection(self, other: Interval) -> bool {
-        !(other.stop < self.start || other.start > self.stop)
     }
 }
