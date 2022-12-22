@@ -193,11 +193,9 @@ impl DataSource for RandomDataSource {
         let mut tiles = Vec::new();
         for i in 0..TILES {
             let start = Timestamp(i * duration / TILES + request_interval.start.0);
-            let last = if i == TILES - 1 { 0 } else { 1 };
-            let stop = Timestamp((i + 1) * duration / TILES + request_interval.start.0 - last);
+            let stop = Timestamp((i + 1) * duration / TILES + request_interval.start.0);
             tiles.push(TileID(Interval::new(start, stop)));
         }
-        println!("requested tiles: {:?}", tiles);
         tiles
     }
 

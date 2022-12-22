@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 use crate::data::{DataSource, EntryID, EntryInfo, SlotTile, UtilPoint};
-use crate::timestamp::{Interval, Timestamp};
+use crate::timestamp::Interval;
 
 /// Overview:
 ///   ProfApp -> Context, Window *
@@ -342,7 +342,6 @@ impl Slot {
     }
 
     fn clear(&mut self) {
-        println!("clearing slot tiles");
         self.tiles.clear();
     }
 
@@ -397,11 +396,11 @@ impl Slot {
                     continue;
                 }
 
+                // Note: the interval is EXCLUSIVE. This turns out to be what
+                // we want here, because in screen coordinates interval.stop
+                // is the BEGINNING of the interval.stop nanosecond.
                 let start = cx.view_interval.unlerp(item.interval.start).at_least(0.0);
-                let stop = cx
-                    .view_interval
-                    .unlerp(Timestamp(item.interval.stop.0 + 1))
-                    .at_most(1.0);
+                let stop = cx.view_interval.unlerp(item.interval.stop).at_most(1.0);
                 let min = rect.lerp(Vec2::new(start, (irow as f32 + 0.05) / rows as f32));
                 let max = rect.lerp(Vec2::new(stop, (irow as f32 + 0.95) / rows as f32));
 

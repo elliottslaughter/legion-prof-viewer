@@ -38,7 +38,7 @@ impl fmt::Display for Timestamp {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default, Deserialize, Serialize)]
 pub struct Interval {
     pub start: Timestamp,
-    pub stop: Timestamp,
+    pub stop: Timestamp, // exclusive
 }
 
 impl fmt::Display for Interval {
@@ -71,7 +71,7 @@ impl fmt::Display for Interval {
                 start_ns,
                 stop_ns,
                 unit_name,
-                Timestamp(stop_ns - start_ns + 1)
+                Timestamp(self.duration_ns())
             );
         }
         let start_units = start_ns / divisor;
@@ -86,7 +86,7 @@ impl fmt::Display for Interval {
             stop_units,
             stop_remainder,
             unit_name,
-            Timestamp(stop_ns - start_ns + 1)
+            Timestamp(self.duration_ns())
         )
     }
 }
@@ -96,13 +96,13 @@ impl Interval {
         Self { start, stop }
     }
     pub fn duration_ns(self) -> i64 {
-        self.stop.0 - self.start.0 + 1
+        self.stop.0 - self.start.0
     }
     pub fn contains(self, point: Timestamp) -> bool {
-        point >= self.start && point <= self.stop
+        point >= self.start && point < self.stop
     }
     pub fn overlaps(self, other: Interval) -> bool {
-        !(other.stop < self.start || other.start > self.stop)
+        !(other.stop < self.start || other.start >= self.stop)
     }
     pub fn intersection(self, other: Interval) -> Self {
         Self {
