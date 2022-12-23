@@ -44,6 +44,7 @@ pub struct UtilPoint {
 pub struct Item {
     pub interval: Interval,
     pub color: Color32,
+    pub name: String,
 }
 
 #[derive(Debug, Copy, Clone, Deserialize, Serialize)]

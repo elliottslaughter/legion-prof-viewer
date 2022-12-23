@@ -20,11 +20,11 @@ Tech demo for potential future Legion Prof interface.
 - [x] Render data in tiles
 - [ ] Long-running tasks that cross tile boundary
 - [ ] Asynchronous data fetch
-- [ ] Horizontal pan
+- [ ] Horizontal pan (including drag, keyboard, horizontal scroll wheel)
 - [ ] Vertical zoom
 - [ ] Search (with load all data option to get better search results)
 - [ ] Task detail view
-- [ ] Keyboard bindings
+- [ ] Keyboard bindings (e.g., arrow keys to select panels, space bar to toggle expand/collapse)
 
 ### Native
 

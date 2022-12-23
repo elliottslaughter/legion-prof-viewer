@@ -408,11 +408,10 @@ impl Slot {
                 if row_hover && hover_pos.map_or(false, |h| item_rect.contains(h)) {
                     hover_pos = None;
 
-                    ui.show_tooltip(
-                        "task_tooltip",
-                        &item_rect,
-                        format!("Item: {} Row: {}", item.interval, row),
-                    );
+                    ui.show_tooltip_ui("task_tooltip", &item_rect, |ui| {
+                        ui.label(&item.name);
+                        ui.label(format!("{}", item.interval));
+                    });
                 }
                 ui.painter().rect(item_rect, 0.0, item.color, Stroke::NONE);
             }
@@ -1049,6 +1048,12 @@ trait UiExtra {
         rect: &Rect,
         text: impl Into<egui::WidgetText>,
     );
+    fn show_tooltip_ui(
+        &mut self,
+        id_source: impl core::hash::Hash,
+        rect: &Rect,
+        add_contents: impl FnOnce(&mut egui::Ui),
+    );
     fn show_tooltip_at(
         &mut self,
         id_source: impl core::hash::Hash,
@@ -1075,9 +1080,22 @@ impl UiExtra for egui::Ui {
         rect: &Rect,
         text: impl Into<egui::WidgetText>,
     ) {
-        egui::containers::show_tooltip_for(self.ctx(), self.auto_id_with(id_source), rect, |ui| {
+        self.show_tooltip_ui(id_source, rect, |ui| {
             ui.add(egui::Label::new(text));
         });
+    }
+    fn show_tooltip_ui(
+        &mut self,
+        id_source: impl core::hash::Hash,
+        rect: &Rect,
+        add_contents: impl FnOnce(&mut egui::Ui),
+    ) {
+        egui::containers::show_tooltip_for(
+            self.ctx(),
+            self.auto_id_with(id_source),
+            rect,
+            add_contents,
+        );
     }
     fn show_tooltip_at(
         &mut self,

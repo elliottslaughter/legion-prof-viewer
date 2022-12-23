@@ -102,6 +102,7 @@ impl RandomDataSource {
                     row_items.push(Item {
                         interval: Interval::new(start, stop),
                         color,
+                        name: "Test Item".to_owned(),
                     });
                 }
                 items.push(row_items);
