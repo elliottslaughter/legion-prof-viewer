@@ -660,7 +660,7 @@ impl<S: Entry> Entry for Panel<S> {
     }
 
     fn is_expandable(&self) -> bool {
-        true
+        !self.slots.is_empty()
     }
 
     fn toggle_expanded(&mut self) {
