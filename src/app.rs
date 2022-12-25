@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
-use crate::data::{DataSource, EntryID, EntryInfo, SlotTile, UtilPoint};
+use crate::data::{DataSource, EntryID, EntryInfo, Field, SlotTile, UtilPoint};
 use crate::timestamp::Interval;
 
 /// Overview:
@@ -409,8 +409,16 @@ impl Slot {
                     hover_pos = None;
 
                     ui.show_tooltip_ui("task_tooltip", &item_rect, |ui| {
-                        ui.label(&item.name);
-                        ui.label(format!("{}", item.interval));
+                        for (name, field) in &item.fields {
+                            match field {
+                                Field::String(value) => {
+                                    ui.label(format!("{}: {}", name, value));
+                                }
+                                Field::Interval(value) => {
+                                    ui.label(format!("{}: {}", name, value));
+                                }
+                            }
+                        }
                     });
                 }
                 ui.painter().rect(item_rect, 0.0, item.color, Stroke::NONE);

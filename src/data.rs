@@ -1,6 +1,6 @@
 pub use egui::Color32;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::timestamp::{Interval, Timestamp};
 
@@ -41,10 +41,16 @@ pub struct UtilPoint {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub enum Field {
+    String(String),
+    Interval(Interval),
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Item {
     pub interval: Interval,
     pub color: Color32,
-    pub name: String,
+    pub fields: BTreeMap<String, Field>,
 }
 
 #[derive(Debug, Copy, Clone, Deserialize, Serialize)]

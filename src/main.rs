@@ -6,7 +6,7 @@ use rand::Rng;
 use std::collections::BTreeMap;
 
 use legion_prof_viewer::data::{
-    DataSource, EntryID, EntryInfo, Item, SlotTile, SummaryTile, TileID, UtilPoint,
+    DataSource, EntryID, EntryInfo, Field, Item, SlotTile, SummaryTile, TileID, UtilPoint,
 };
 use legion_prof_viewer::timestamp::{Interval, Timestamp};
 
@@ -102,7 +102,14 @@ impl RandomDataSource {
                     row_items.push(Item {
                         interval: Interval::new(start, stop),
                         color,
-                        name: "Test Item".to_owned(),
+                        fields: [
+                            ("Title".to_owned(), Field::String("Test Item".to_owned())),
+                            (
+                                "Interval".to_owned(),
+                                Field::Interval(Interval::new(start, stop)),
+                            ),
+                        ]
+                        .into(),
                     });
                 }
                 items.push(row_items);
