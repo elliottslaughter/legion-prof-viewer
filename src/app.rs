@@ -417,6 +417,9 @@ impl Slot {
                                 Field::Interval(value) => {
                                     ui.label(format!("{}: {}", name, value));
                                 }
+                                Field::Empty => {
+                                    ui.label(name);
+                                }
                             }
                         }
                     });

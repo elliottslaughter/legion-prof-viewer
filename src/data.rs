@@ -44,6 +44,7 @@ pub struct UtilPoint {
 pub enum Field {
     String(String),
     Interval(Interval),
+    Empty,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
