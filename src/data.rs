@@ -42,6 +42,8 @@ pub struct UtilPoint {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum Field {
+    I64(i64),
+    U64(u64),
     String(String),
     Interval(Interval),
     Empty,

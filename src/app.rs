@@ -411,6 +411,12 @@ impl Slot {
                     ui.show_tooltip_ui("task_tooltip", &item_rect, |ui| {
                         for (name, field) in &item.fields {
                             match field {
+                                Field::I64(value) => {
+                                    ui.label(format!("{}: {}", name, value));
+                                }
+                                Field::U64(value) => {
+                                    ui.label(format!("{}: {}", name, value));
+                                }
                                 Field::String(value) => {
                                     ui.label(format!("{}: {}", name, value));
                                 }
