@@ -409,6 +409,7 @@ impl Slot {
                     hover_pos = None;
 
                     ui.show_tooltip_ui("task_tooltip", &item_rect, |ui| {
+                        ui.label(&item.title);
                         for (name, field) in &item.fields {
                             match field {
                                 Field::I64(value) => {

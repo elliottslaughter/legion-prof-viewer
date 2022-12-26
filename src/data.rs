@@ -53,6 +53,7 @@ pub enum Field {
 pub struct Item {
     pub interval: Interval,
     pub color: Color32,
+    pub title: String,
     pub fields: Vec<(String, Field)>,
 }
 

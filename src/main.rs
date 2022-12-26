@@ -102,8 +102,8 @@ impl RandomDataSource {
                     row_items.push(Item {
                         interval: Interval::new(start, stop),
                         color,
+                        title: "Test Item".to_owned(),
                         fields: vec![
-                            ("Title".to_owned(), Field::String("Test Item".to_owned())),
                             (
                                 "Interval".to_owned(),
                                 Field::Interval(Interval::new(start, stop)),
