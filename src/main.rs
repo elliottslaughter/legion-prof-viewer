@@ -103,12 +103,10 @@ impl RandomDataSource {
                         interval: Interval::new(start, stop),
                         color,
                         title: "Test Item".to_owned(),
-                        fields: vec![
-                            (
-                                "Interval".to_owned(),
-                                Field::Interval(Interval::new(start, stop)),
-                            ),
-                        ],
+                        fields: vec![(
+                            "Interval".to_owned(),
+                            Field::Interval(Interval::new(start, stop)),
+                        )],
                     });
                 }
                 items.push(row_items);
